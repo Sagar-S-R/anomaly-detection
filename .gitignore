@@ -1,0 +1,27 @@
+.env
+
+venv/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$.py.class
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+*.bak
+*.old
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Jupyter and notebook files
+.ipynb_checkpoints/
+
+# VSCode settings
+.vscode/
+
+
