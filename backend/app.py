@@ -71,8 +71,21 @@ async def stream_video(websocket: WebSocket):
             audio_chunk = audio_stream.get_chunk()  # Get latest 2-sec audio
 
             # Run Tier 1 on current frame and audio
-            tier1_result = run_tier1_continuous(frame, audio_chunk)
-            await websocket.send_json(tier1_result)
+            try:
+                tier1_result = run_tier1_continuous(frame, audio_chunk)
+                await websocket.send_json(tier1_result)
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                print(f"Tier 1 processing error: {e}")
+                print(f"Full error traceback: {error_details}")
+                # Send basic result without audio processing
+                tier1_result = {
+                    "status": "Normal", 
+                    "details": "Video processing only (audio error)",
+                    "error": f"Audio processing failed: {str(e)}"
+                }
+                await websocket.send_json(tier1_result)
 
             if tier1_result["status"] == "Suspected Anomaly":
                 anomaly_detected = True

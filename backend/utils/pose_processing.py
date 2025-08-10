@@ -16,6 +16,9 @@ options = PoseLandmarkerOptions(
 )
 landmarker = PoseLandmarker.create_from_options(options)
 
+# Global timestamp counter for streaming
+_streaming_timestamp = 0
+
 
 
 def process_pose_frame(frame):
@@ -72,9 +75,11 @@ def process_pose(video_path):
     return len(pose_anomalies), sampled_frames, timestamps, fps
 
 def process_pose_frame(frame):
+    global _streaming_timestamp
+    # Process a single frame (simplified)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    timestamp_ms = 0  # Placeholder for stream
-    result = landmarker.detect_for_video(mp_image, timestamp_ms)  # Assume landmarker is global or initialized
+    _streaming_timestamp += 33  # Increment by ~33ms (30 FPS)
+    result = landmarker.detect_for_video(mp_image, _streaming_timestamp)  # Use incremental timestamp
     if result.pose_landmarks:
         landmarks = result.pose_landmarks[0]
         xs = [lm.x * mp_image.width for lm in landmarks]
