@@ -1,64 +1,91 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from tier1.tier1_pipeline import run_tier1_continuous
-import os
-from tempfile import NamedTemporaryFile
+from tier2.tier2_pipeline import run_tier2_continuous
+from utils.audio_processing import AudioStream
 import cv2
+import asyncio
+import queue
+from threading import Thread
 
 app = FastAPI()
 
 @app.websocket("/stream_video")
 async def stream_video(websocket: WebSocket):
     await websocket.accept()
-    cap = cv2.VideoCapture(0)  # Use 0 for default camera; replace with RTSP/HTTP URL for stream
-    if not cap.isOpened():
-        await websocket.send_json({"error": "Could not open video stream"})
+    
+    # Try multiple times to open camera
+    video_cap = None
+    for attempt in range(3):
+        video_cap = cv2.VideoCapture(0)
+        if video_cap.isOpened():
+            # Test if we can actually read a frame
+            ret, test_frame = video_cap.read()
+            if ret:
+                print(f"✅ Camera opened successfully on attempt {attempt + 1}")
+                break
+            else:
+                video_cap.release()
+                video_cap = None
+        else:
+            video_cap = None
+        
+        if attempt < 2:  # Don't sleep on last attempt
+            await asyncio.sleep(1)
+    
+    if video_cap is None or not video_cap.isOpened():
+        await websocket.send_json({"error": "Could not open video stream after multiple attempts"})
         return
 
-    try:
+    audio_stream = AudioStream()  # Start audio capture
+    audio_stream.start()
+
+    frame_queue = queue.Queue(maxsize=10)  # Buffer for frames
+    anomaly_detected = False
+
+    def capture_frames():
         while True:
-            ret, frame = cap.read()
+            ret, frame = video_cap.read()
             if not ret:
                 break
-            # Simulate continuous Tier 1 (replace with actual streaming logic)
-            result = run_tier1_continuous(frame)  # Placeholder; update tier1_pipeline.py
-            await websocket.send_json(result)
+            if not frame_queue.full():
+                frame_queue.put(frame)
+
+    frame_thread = Thread(target=capture_frames)
+    frame_thread.start()
+
+    try:
+        fps = video_cap.get(cv2.CAP_PROP_FPS) or 30
+        frame_interval = int(fps)  # For 1 FPS
+        frame_count = 0
+        while True:
+            if frame_queue.empty():
+                await asyncio.sleep(0.01)
+                continue
+
+            frame = frame_queue.get()
+            frame_count += 1
+            if frame_count % frame_interval != 0:
+                continue
+
+            # Get audio chunk (2-sec window)
+            audio_chunk = audio_stream.get_chunk()  # Get latest 2-sec audio
+
+            # Run Tier 1 on current frame and audio
+            tier1_result = run_tier1_continuous(frame, audio_chunk)
+            await websocket.send_json(tier1_result)
+
+            if tier1_result["status"] == "Suspected Anomaly":
+                anomaly_detected = True
+                # Run Tier 2 on current frame/audio for reasoning
+                tier2_result = run_tier2_continuous(frame, audio_chunk, tier1_result)
+                await websocket.send_json(tier2_result)
+
+            await asyncio.sleep(1 / fps)  # Control rate
     except WebSocketDisconnect:
-        cap.release()
+        pass
     except Exception as e:
         await websocket.send_json({"error": str(e)})
     finally:
-        cap.release()
-
-@app.post("/process_video")
-async def process_video(file: UploadFile = File(...)):
-    # Keep batch processing for compatibility
-    with NamedTemporaryFile(delete=False, suffix=".mp4") as temp_video:
-        contents = await file.read()
-        temp_video.write(contents)
-        video_path = temp_video.name
-
-    tier1_result = run_tier1(video_path)  # Original batch function
-
-    if tier1_result["status"] == "Normal":
-        os.remove(video_path)
-        return {
-            "frame_id": "N/A",
-            "visual_score": 0.0,
-            "audio_score": 0.0,
-            "text_alignment_score": 0.0,
-            "multimodal_agreement": 0.0,
-            "reasoning_summary": "No anomaly detected. Normal activity.",
-            "threat_severity_index": 0.0
-        }
-
-    tier2_result = run_tier2(video_path, tier1_result)
-    if tier2_result["threat_severity_index"] > 0.5:
-        tier2_result["log"] = {
-            "snapshot": "path/to/anomaly_snapshot.jpg",
-            "reasoning": tier2_result["reasoning_summary"],
-            "timestamps": tier2_result.get("timestamps", [])
-        }
-        print("Alert: Anomaly Detected!")
-
-    os.remove(video_path)
-    return tier2_result
+        video_cap.release()
+        audio_stream.stop()
+        frame_thread.join()

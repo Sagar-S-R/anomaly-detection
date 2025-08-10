@@ -68,3 +68,26 @@ def process_scene_tier2(video_path):
 
     cap.release()
     return captions, max(anomaly_probs) if anomaly_probs else 0.0
+
+# Existing code...
+def process_scene_frame(image_array):
+    image = Image.fromarray(image_array)
+    texts = ["normal activity in a room", "person fallen on the floor", "person crawling on the ground"]
+    inputs = clip_processor(text=texts, images=image, return_tensors="pt", padding=True)
+    outputs = clip_model(**inputs)
+    logits_per_image = outputs.logits_per_image
+    probs = logits_per_image.softmax(dim=1)[0]
+    return max(probs[1], probs[2]).item()
+
+def process_scene_tier2_frame(image_array):
+    image = Image.fromarray(image_array)
+    inputs = blip_processor(images=image, return_tensors="pt")
+    generated_ids = blip_model.generate(**inputs)
+    caption = blip_processor.decode(generated_ids[0], skip_special_tokens=True)
+    texts = ["normal activity in a room", "person fallen on the floor", "person crawling on the ground"]
+    inputs = clip_large_processor(text=texts, images=image, return_tensors="pt", padding=True)
+    outputs = clip_large_model(**inputs)
+    logits_per_image = outputs.logits_per_image
+    probs = logits_per_image.softmax(dim=1)[0]
+    anomaly_max = max(probs[1], probs[2]).item()
+    return [caption], anomaly_max

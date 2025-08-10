@@ -1,25 +1,24 @@
-from utils.audio_processing import extract_audio_chunk, chunk_and_transcribe_tiny
+from utils.audio_processing import chunk_and_transcribe_tiny
 from utils.pose_processing import process_pose_frame
 from utils.scene_processing import process_scene_frame
 from utils.fusion_logic import tier1_fusion
 import cv2
 import numpy as np
 
-def run_tier1_continuous(frame):
-    # Placeholder for continuous processing
-    # Assume frame is a single image from the stream
-    pose_summary = f"Pose processed for frame (simulated: no anomalies)"  # Update with process_pose_frame
-    audio_summary = "Audio chunk: No data"  # Update with extract_audio_chunk
-    scene_summary = f"Scene anomaly prob: {process_scene_frame(frame):.2f}"  # Implement this
+def run_tier1_continuous(frame, audio_chunk_path):
+    pose_anomaly = process_pose_frame(frame)  # 0 or 1 (anomaly or not)
+    pose_summary = f"Pose anomaly detected: {bool(pose_anomaly)}"
+
+    transcripts = chunk_and_transcribe_tiny(audio_chunk_path)
+    audio_summary = "Audio transcripts: " + " | ".join(transcripts) if transcripts else "No audio."
+
+    anomaly_prob = process_scene_frame(frame)
+    scene_summary = f"Scene anomaly probability: {anomaly_prob:.2f}"
+
     status, details = tier1_fusion(pose_summary, audio_summary, scene_summary)
     return {
-        "frame_id": "Streaming",
-        "visual_score": 0.0 if status == "Normal" else 0.5,  # Placeholder
-        "audio_score": 0.0,
-        "text_alignment_score": 0.0,
-        "multimodal_agreement": 0.0,
-        "reasoning_summary": details,
-        "threat_severity_index": 0.0 if status == "Normal" else 0.5
+        "status": status,
+        "details": details
     }
 
 def run_tier1(video_path):
