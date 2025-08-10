@@ -58,33 +58,50 @@ async def stream_video(websocket: WebSocket):
         frame_interval = int(fps)  # For 1 FPS
         frame_count = 0
         while True:
-            if frame_queue.empty():
-                await asyncio.sleep(0.01)
+            try:
+                if frame_queue.empty():
+                    await asyncio.sleep(0.01)
+                    continue
+
+                frame = frame_queue.get()
+                frame_count += 1
+                if frame_count % frame_interval != 0:
+                    continue
+
+                # Get audio chunk (2-sec window)
+                audio_chunk = audio_stream.get_chunk()  # Get latest 2-sec audio
+
+                # Run Tier 1 on current frame and audio
+                tier1_result = run_tier1_continuous(frame, audio_chunk)
+                await websocket.send_json(tier1_result)
+
+                if tier1_result["status"] == "Suspected Anomaly":
+                    anomaly_detected = True
+                    # Run Tier 2 on current frame/audio for reasoning
+                    tier2_result = run_tier2_continuous(frame, audio_chunk, tier1_result)
+                    await websocket.send_json(tier2_result)
+
+                await asyncio.sleep(1 / fps)  # Control rate
+                
+            except Exception as e:
+                # Log error but continue processing
+                print(f"Error processing frame: {e}")
+                error_msg = {"error": str(e), "status": "Error - continuing"}
+                try:
+                    await websocket.send_json(error_msg)
+                except:
+                    pass  # If we can't send error, client probably disconnected
+                await asyncio.sleep(1)  # Brief pause before continuing
                 continue
-
-            frame = frame_queue.get()
-            frame_count += 1
-            if frame_count % frame_interval != 0:
-                continue
-
-            # Get audio chunk (2-sec window)
-            audio_chunk = audio_stream.get_chunk()  # Get latest 2-sec audio
-
-            # Run Tier 1 on current frame and audio
-            tier1_result = run_tier1_continuous(frame, audio_chunk)
-            await websocket.send_json(tier1_result)
-
-            if tier1_result["status"] == "Suspected Anomaly":
-                anomaly_detected = True
-                # Run Tier 2 on current frame/audio for reasoning
-                tier2_result = run_tier2_continuous(frame, audio_chunk, tier1_result)
-                await websocket.send_json(tier2_result)
-
-            await asyncio.sleep(1 / fps)  # Control rate
+                
     except WebSocketDisconnect:
-        pass
+        print("WebSocket disconnected")
     except Exception as e:
-        await websocket.send_json({"error": str(e)})
+        print(f"Fatal WebSocket error: {e}")
+        try:
+            await websocket.send_json({"error": f"Fatal error: {str(e)}"})
+        except:
+            pass
     finally:
         video_cap.release()
         audio_stream.stop()

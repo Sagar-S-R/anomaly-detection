@@ -4,6 +4,7 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 import numpy as np
+import time
 
 MODEL_PATH = "pose_landmarker_heavy.task"
 BaseOptions = mp_tasks.BaseOptions
@@ -16,6 +17,8 @@ options = PoseLandmarkerOptions(
 )
 landmarker = PoseLandmarker.create_from_options(options)
 
+# Global timestamp counter for streaming
+_frame_timestamp = 0
 
 
 def process_pose_frame(frame):
@@ -72,9 +75,11 @@ def process_pose(video_path):
     return len(pose_anomalies), sampled_frames, timestamps, fps
 
 def process_pose_frame(frame):
+    global _frame_timestamp
+    _frame_timestamp += 33  # ~30 FPS (33ms per frame)
+    
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    timestamp_ms = 0  # Placeholder for stream
-    result = landmarker.detect_for_video(mp_image, timestamp_ms)  # Assume landmarker is global or initialized
+    result = landmarker.detect_for_video(mp_image, _frame_timestamp)
     if result.pose_landmarks:
         landmarks = result.pose_landmarks[0]
         xs = [lm.x * mp_image.width for lm in landmarks]
