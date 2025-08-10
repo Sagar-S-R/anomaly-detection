@@ -12,80 +12,129 @@ from tempfile import NamedTemporaryFile
 whisper_tiny = whisper.load_model("tiny")
 whisper_large = whisper.load_model("large")
 
+def cleanup_temp_audio_files():
+    """Clean up old temporary audio files"""
+    try:
+        temp_dir = os.path.join(os.path.dirname(__file__), '..', 'temp_audio')
+        if os.path.exists(temp_dir):
+            for filename in os.listdir(temp_dir):
+                if filename.endswith('.wav'):
+                    file_path = os.path.join(temp_dir, filename)
+                    try:
+                        os.remove(file_path)
+                        print(f"Cleaned up old audio file: {filename}")
+                    except:
+                        pass
+    except Exception as e:
+        print(f"Error cleaning up temp audio files: {e}")
+
+# Clean up any existing temp files on startup
+cleanup_temp_audio_files()
+
 class AudioStream:
     def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.chunk = 1024
-        self.format = pyaudio.paInt16
-        self.channels = 1
-        self.rate = 16000  # Whisper compatible
-        self.stream = None
-        self.buffer = deque(maxlen=32)  # ~2 sec at 1024 chunk (32 chunks ~2 sec)
-        self.running = False
+        try:
+            self.p = pyaudio.PyAudio()
+            self.chunk = 1024
+            self.format = pyaudio.paInt16
+            self.channels = 1
+            self.rate = 16000  # Whisper compatible
+            self.stream = None
+            self.buffer = deque(maxlen=16)  # Reduced from 32 to 16 for faster filling (~1 sec)
+            self.running = False
+            print("AudioStream initialized successfully")
+        except Exception as e:
+            print(f"AudioStream initialization error: {e}")
+            self.p = None
 
     def start(self):
+        if not self.p:
+            print("PyAudio not available, skipping audio")
+            return
+            
         try:
-            self.stream = self.p.open(format=self.format, channels=self.channels, rate=self.rate, input=True, frames_per_buffer=self.chunk)
+            print("Starting audio stream...")
+            self.stream = self.p.open(
+                format=self.format, 
+                channels=self.channels, 
+                rate=self.rate, 
+                input=True, 
+                frames_per_buffer=self.chunk
+            )
             self.running = True
             Thread(target=self._capture).start()
+            print("Audio stream started successfully")
         except Exception as e:
             print(f"Audio stream start error: {e}")
             self.running = False
 
     def _capture(self):
+        print("Audio capture thread started")
+        chunk_count = 0
         while self.running:
             try:
-                data = self.stream.read(self.chunk)
-                self.buffer.append(data)
+                if self.stream and self.stream.is_active():
+                    data = self.stream.read(self.chunk, exception_on_overflow=False)
+                    self.buffer.append(data)
+                    chunk_count += 1
+                    if chunk_count % 10 == 0:  # Log every 10 chunks
+                        print(f"Audio captured {chunk_count} chunks, buffer size: {len(self.buffer)}")
+                else:
+                    print("Audio stream not active")
+                    break
             except Exception as e:
                 print(f"Audio capture error: {e}")
                 break
+        print("Audio capture thread ended")
 
     def get_chunk(self):
-        if len(self.buffer) < self.buffer.maxlen:
-            return None
-<<<<<<< HEAD
+        print(f"Audio buffer status: {len(self.buffer)}/{self.buffer.maxlen} chunks, running: {self.running}")
         
+        if not self.running:
+            print("Audio stream not running")
+            return None
+            
+        # Be less strict - allow processing with at least half buffer
+        min_chunks = max(8, self.buffer.maxlen // 2)  # At least 8 chunks or half buffer
+        if len(self.buffer) < min_chunks:
+            print(f"Audio buffer insufficient: {len(self.buffer)}/{min_chunks} minimum")
+            return None
+            
         try:
-            # Concatenate buffer to audio bytes
-            audio_bytes = b''.join(self.buffer)
-            with NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-                wf = wave.open(temp_audio.name, 'wb')
+            # Use available buffer data
+            available_chunks = list(self.buffer)
+            audio_bytes = b''.join(available_chunks)
+            print(f"Created audio data from {len(available_chunks)} chunks: {len(audio_bytes)} bytes")
+            
+            # Create temp directory if it doesn't exist
+            temp_dir = os.path.join(os.path.dirname(__file__), '..', 'temp_audio')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Create temp file in the temp_audio directory
+            temp_path = os.path.join(temp_dir, f"audio_{int(time.time() * 1000)}.wav")
+            
+            # Write audio file with proper error handling
+            with wave.open(temp_path, 'wb') as wf:
                 wf.setnchannels(self.channels)
                 wf.setsampwidth(self.p.get_sample_size(self.format))
                 wf.setframerate(self.rate)
                 wf.writeframes(audio_bytes)
-                wf.close()
-                return temp_audio.name
-        except Exception as e:
-            print(f"Error creating audio chunk: {e}")
-=======
-        try:
-            # Concatenate buffer to audio bytes
-            audio_bytes = b''.join(self.buffer)
-            with NamedTemporaryFile(delete=False, suffix=".wav", prefix="audio_") as temp_audio:
-                temp_path = temp_audio.name
-            
-            # Write audio file with proper error handling
-            wf = wave.open(temp_path, 'wb')
-            wf.setnchannels(self.channels)
-            wf.setsampwidth(self.p.get_sample_size(self.format))
-            wf.setframerate(self.rate)
-            wf.writeframes(audio_bytes)
-            wf.close()
             
             # Small delay to ensure file is fully written
             time.sleep(0.01)
             
             # Verify file exists and has content before returning
             if os.path.exists(temp_path) and os.path.getsize(temp_path) > 44:  # WAV header is 44 bytes
+                file_size = os.path.getsize(temp_path)
+                print(f"Audio chunk created successfully: {temp_path} ({file_size} bytes)")
                 return temp_path
             else:
                 print(f"Audio file creation failed: {temp_path}")
                 return None
         except Exception as e:
             print(f"Audio processing error: {e}")
->>>>>>> bab5fe86a117a6a2f2f34b20ac47abe0d4c53b3f
+            import traceback
+            print(f"Audio traceback: {traceback.format_exc()}")
             return None
 
     def stop(self):
@@ -104,61 +153,36 @@ def extract_audio(video_path):
     return None
 
 def chunk_and_transcribe_tiny(audio_path):
-<<<<<<< HEAD
-    # Existing
-    if not audio_path or not os.path.exists(audio_path):
-        return []
-    
-    try:
-        audio = AudioSegment.from_file(audio_path)
-        chunk_length_ms = 2000
-        audio_chunks = [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
-        transcripts = []
-        for idx, chunk in enumerate(audio_chunks):
-            chunk_path = f"chunk_{idx}.wav"
-            try:
-                chunk.export(chunk_path, format="wav")
-                result = whisper_tiny.transcribe(chunk_path, fp16=False)
-                transcripts.append(result["text"].strip())
-                if os.path.exists(chunk_path):
-                    os.remove(chunk_path)
-            except Exception as e:
-                print(f"Error processing audio chunk {idx}: {e}")
-                continue
-        
-        # Clean up main audio file
-        try:
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
-        except Exception as e:
-            print(f"Error removing audio file: {e}")
-            
-        return transcripts
-    except Exception as e:
-        print(f"Error in chunk_and_transcribe_tiny: {e}")
-        return []
-=======
     # Simplified version that works directly with WAV files
     if not audio_path:
+        print("No audio path provided")
         return []
+    
     try:
         # Verify file exists and has content
         if not os.path.exists(audio_path):
             print(f"Audio file not found: {audio_path}")
             return []
-        if os.path.getsize(audio_path) == 0:
-            print(f"Audio file is empty: {audio_path}")
+        
+        file_size = os.path.getsize(audio_path)
+        if file_size <= 44:  # WAV header size
+            print(f"Audio file too small ({file_size} bytes): {audio_path}")
             return []
+        
+        print(f"Transcribing audio file: {audio_path} ({file_size} bytes)")
         
         # Try direct transcription without chunking for WAV files
         result = whisper_tiny.transcribe(audio_path, fp16=False)
         transcript = result["text"].strip()
         
+        print(f"Transcription result: '{transcript}'")
+        
         # Clean up file
         try:
             os.remove(audio_path)
-        except:
-            pass
+            print(f"Cleaned up audio file: {audio_path}")
+        except Exception as cleanup_error:
+            print(f"Warning: Could not delete {audio_path}: {cleanup_error}")
             
         return [transcript] if transcript else []
         
@@ -168,56 +192,49 @@ def chunk_and_transcribe_tiny(audio_path):
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
+                print(f"Cleaned up failed audio file: {audio_path}")
         except:
             pass
         return []
->>>>>>> bab5fe86a117a6a2f2f34b20ac47abe0d4c53b3f
 
 def transcribe_large(audio_path):
-    # Existing
-    if not audio_path or not os.path.exists(audio_path):
+    # Enhanced version with better error handling
+    if not audio_path:
+        print("No audio path provided for large transcription")
         return ""
-<<<<<<< HEAD
-    
-    try:
-        result = whisper_large.transcribe(audio_path, fp16=False)
-        text = result["text"].strip()
         
-        # Clean up audio file
-        try:
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
-        except Exception as e:
-            print(f"Error removing audio file: {e}")
-            
-        return text
-    except Exception as e:
-        print(f"Error in transcribe_large: {e}")
-=======
+    if not os.path.exists(audio_path):
+        print(f"Audio file not found for large transcription: {audio_path}")
+        return ""
+        
     try:
-        # Verify file exists and has content
-        if not os.path.exists(audio_path):
+        file_size = os.path.getsize(audio_path)
+        if file_size <= 44:  # WAV header size
+            print(f"Audio file too small for large transcription ({file_size} bytes): {audio_path}")
             return ""
-        if os.path.getsize(audio_path) == 0:
-            return ""
+        
+        print(f"Large transcribing audio file: {audio_path} ({file_size} bytes)")
         
         result = whisper_large.transcribe(audio_path, fp16=False)
         text = result["text"].strip()
+        
+        print(f"Large transcription result: '{text}'")
         
         # Clean up file
         try:
             os.remove(audio_path)
-        except:
-            pass  # File might already be deleted
+            print(f"Cleaned up large audio file: {audio_path}")
+        except Exception as cleanup_error:
+            print(f"Warning: Could not delete {audio_path}: {cleanup_error}")
         
         return text
     except Exception as e:
-        print(f"Transcription error: {e}")
+        print(f"Large transcription error: {e}")
         # Clean up file on error
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
+                print(f"Cleaned up failed large audio file: {audio_path}")
         except:
             pass
->>>>>>> bab5fe86a117a6a2f2f34b20ac47abe0d4c53b3f
         return ""
