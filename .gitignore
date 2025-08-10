@@ -24,4 +24,26 @@ Thumbs.db
 # VSCode settings
 .vscode/
 
+# Video recordings and anomaly frames (large files)
+backend/recorded_videos/
+backend/anomaly_frames/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+
+# Model files (can be large)
+*.task
+*.onnx
+*.h5
+*.pb
+*.pth
+*.pt
+
 

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Anomaly Detection Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .video-section { margin-bottom: 20px; }
+        .anomaly-list { margin-top: 20px; }
+        .anomaly-item { 
+            border: 1px solid #ddd; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .anomaly-item.high-threat { border-left: 5px solid #ff4444; }
+        .anomaly-item.medium-threat { border-left: 5px solid #ffaa44; }
+        .anomaly-item.low-threat { border-left: 5px solid #44ff44; }
+        .anomaly-frame { max-width: 300px; margin: 10px 0; }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            font-weight: bold;
+        }
+        .status.normal { background: #d4edda; color: #155724; }
+        .status.anomaly { background: #f8d7da; color: #721c24; }
+        .live-feed { 
+            border: 2px solid #ddd; 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-bottom: 20px;
+        }
+        .live-feed.anomaly-detected { border-color: #ff4444; background: #ffe6e6; }
+        .video-container { 
+            text-align: center; 
+            margin: 15px 0; 
+        }
+        #liveVideoStream { 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: border-color 0.3s ease;
+        }
+        #liveVideoStream.anomaly-border { 
+            border-color: #ff4444 !important; 
+            box-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+        }
+        .stream-controls { 
+            text-align: center; 
+            margin-top: 15px; 
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        .video-controls { margin: 10px 0; }
+        #videoPlayer { width: 100%; max-width: 600px; }
+        
+        /* JSON Output Styles */
+        .json-output {
+            background: #1e1e1e;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin: 10px 0;
+            border: 1px solid #444;
+        }
+        .json-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .json-toggle {
+            background: #28a745;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Real-time Anomaly Detection System</h1>
+        
+        <div class="live-feed" id="liveFeed">
+            <h2>Live Video Stream</h2>
+            <div id="status" class="status normal">Status: Normal</div>
+            <div id="currentDetails">Monitoring for anomalies...</div>
+            <div class="video-container">
+                <img id="liveVideoStream" src="/video_stream" alt="Live Video Stream" style="width: 100%; max-width: 640px; border: 3px solid #28a745; border-radius: 8px;">
+            </div>
+            <div class="stream-controls">
+                <button onclick="connectWebSocket()">Start Monitoring</button>
+                <button onclick="disconnectWebSocket()">Stop Monitoring</button>
+                <button onclick="toggleStreamDisplay()">Toggle Stream Display</button>
+            </div>
+        </div>
+
+        <div class="json-section">
+            <h2>📊 Real-time JSON Data</h2>
+            <button class="json-toggle" onclick="toggleJsonDisplay()">Show/Hide JSON Output</button>
+            <div id="jsonOutput" class="json-output" style="display: none;">
+                Waiting for data...
+            </div>
+        </div>
+
+        <div class="video-section">
+            <h2>📹 Video Playback</h2>
+            <div class="video-controls">
+                <button onclick="loadLatestVideo()">Load Latest Recording</button>
+                <button onclick="jumpToAnomaly()">Jump to Last Anomaly</button>
+            </div>
+            <video id="videoPlayer" controls style="display:none;">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div class="anomaly-list">
+            <h2>🚨 Detected Anomalies</h2>
+            <button onclick="refreshAnomalies()">Refresh List</button>
+            <div id="anomalyList">No anomalies detected yet.</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let anomalies = [];
+        let currentVideoFile = null;
+
+        function connectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+            
+            ws = new WebSocket('ws://localhost:8000/stream_video');
+            
+            ws.onopen = function(event) {
+                document.getElementById('status').textContent = 'Status: Connected - Monitoring...';
+                document.getElementById('status').className = 'status normal';
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                // Display detailed JSON output
+                document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
+                
+                if (data.error) {
+                    document.getElementById('currentDetails').textContent = 'Error: ' + data.error;
+                    return;
+                }
+
+                // Update current video file
+                if (data.video_file) {
+                    currentVideoFile = data.video_file;
+                }
+
+                if (data.status === 'Suspected Anomaly') {
+                    document.getElementById('status').textContent = 'Status: 🚨 ANOMALY DETECTED!';
+                    document.getElementById('status').className = 'status anomaly';
+                    document.getElementById('liveFeed').className = 'live-feed anomaly-detected';
+                    
+                    // Update live stream border to red
+                    const liveStream = document.getElementById('liveVideoStream');
+                    liveStream.className = 'anomaly-border';
+                    liveStream.style.borderColor = '#ff4444';
+                    
+                    // Add to anomalies list if it has frame info
+                    if (data.frame_count) {
+                        anomalies.push(data);
+                        displayAnomalies();
+                    }
+                } else {
+                    document.getElementById('status').textContent = 'Status: Normal';
+                    document.getElementById('status').className = 'status normal';
+                    document.getElementById('liveFeed').className = 'live-feed';
+                    
+                    // Update live stream border to green
+                    const liveStream = document.getElementById('liveVideoStream');
+                    liveStream.className = '';
+                    liveStream.style.borderColor = '#28a745';
+                }
+
+                document.getElementById('currentDetails').textContent = data.details || 'Monitoring...';
+            };
+
+            ws.onclose = function(event) {
+                document.getElementById('status').textContent = 'Status: Disconnected';
+                document.getElementById('status').className = 'status normal';
+                document.getElementById('liveFeed').className = 'live-feed';
+                
+                // Reset live stream border
+                const liveStream = document.getElementById('liveVideoStream');
+                liveStream.style.borderColor = '#ddd';
+                
+                console.log('WebSocket closed:', event.code, event.reason);
+            };
+
+            ws.onerror = function(error) {
+                document.getElementById('currentDetails').textContent = 'WebSocket error occurred';
+                document.getElementById('status').textContent = 'Status: Connection Error';
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function displayAnomalies() {
+            const listDiv = document.getElementById('anomalyList');
+            if (anomalies.length === 0) {
+                listDiv.innerHTML = 'No anomalies detected yet.';
+                return;
+            }
+
+            let html = '';
+            anomalies.forEach((anomaly, index) => {
+                const threat = anomaly.threat_severity_index || 0.5;
+                const threatClass = threat > 0.7 ? 'high-threat' : threat > 0.4 ? 'medium-threat' : 'low-threat';
+                
+                html += `
+                    <div class="anomaly-item ${threatClass}">
+                        <h4>Anomaly #${index + 1} - Threat Level: ${(threat * 100).toFixed(0)}%</h4>
+                        <p><strong>Time:</strong> ${anomaly.timestamp?.toFixed(2) || 'Unknown'}s (Frame ${anomaly.frame_count || 'Unknown'})</p>
+                        <p><strong>Details:</strong> ${anomaly.details || 'No details'}</p>
+                        ${anomaly.reasoning_summary ? `<p><strong>AI Analysis:</strong> ${anomaly.reasoning_summary}</p>` : ''}
+                        ${anomaly.frame_file ? `
+                            <img src="/${anomaly.frame_file}" alt="Anomaly frame" class="anomaly-frame" />
+                        ` : ''}
+                        <button onclick="jumpToTime(${anomaly.timestamp || 0})">View in Video</button>
+                        <button onclick="showFrameDetails(${index})">Show Details</button>
+                    </div>
+                `;
+            });
+            listDiv.innerHTML = html;
+        }
+
+        function jumpToTime(timestamp) {
+            const video = document.getElementById('videoPlayer');
+            if (currentVideoFile && video) {
+                video.src = `/${currentVideoFile}`;
+                video.style.display = 'block';
+                video.currentTime = timestamp;
+                video.play();
+            } else {
+                alert('No video loaded. Please load a recording first.');
+            }
+        }
+
+        function loadLatestVideo() {
+            if (currentVideoFile) {
+                const video = document.getElementById('videoPlayer');
+                video.src = `/${currentVideoFile}`;
+                video.style.display = 'block';
+            } else {
+                alert('No video recording available. Start monitoring first.');
+            }
+        }
+
+        function jumpToAnomaly() {
+            if (anomalies.length > 0) {
+                const lastAnomaly = anomalies[anomalies.length - 1];
+                jumpToTime(lastAnomaly.timestamp || 0);
+            } else {
+                alert('No anomalies detected yet.');
+            }
+        }
+
+        function refreshAnomalies() {
+            fetch('/anomaly_events')
+                .then(response => response.json())
+                .then(data => {
+                    anomalies = data.anomaly_events || [];
+                    displayAnomalies();
+                })
+                .catch(error => {
+                    console.error('Error fetching anomalies:', error);
+                });
+        }
+
+        function toggleStreamDisplay() {
+            const streamImg = document.getElementById('liveVideoStream');
+            if (streamImg.style.display === 'none') {
+                streamImg.style.display = 'block';
+                streamImg.src = '/video_stream?' + new Date().getTime(); // Force refresh
+            } else {
+                streamImg.style.display = 'none';
+            }
+        }
+
+        function toggleJsonDisplay() {
+            const jsonOutput = document.getElementById('jsonOutput');
+            if (jsonOutput.style.display === 'none') {
+                jsonOutput.style.display = 'block';
+            } else {
+                jsonOutput.style.display = 'none';
+            }
+        }
+
+        function restartVideoStream() {
+            const streamImg = document.getElementById('liveVideoStream');
+            streamImg.src = '/video_stream?' + new Date().getTime(); // Force refresh with timestamp
+        }
+
+        // Auto-refresh video stream every 30 seconds to prevent stale streams
+        setInterval(() => {
+            const streamImg = document.getElementById('liveVideoStream');
+            if (streamImg.style.display !== 'none') {
+                restartVideoStream();
+            }
+        }, 30000);
+
+        function showFrameDetails(index) {
+            const anomaly = anomalies[index];
+            alert(`
+Anomaly Details:
+- Frame: ${anomaly.frame_count}
+- Timestamp: ${anomaly.timestamp?.toFixed(2)}s
+- Threat Level: ${((anomaly.threat_severity_index || 0.5) * 100).toFixed(0)}%
+- Visual Score: ${((anomaly.visual_score || 0.5) * 100).toFixed(0)}%
+- Audio Score: ${((anomaly.audio_score || 0.5) * 100).toFixed(0)}%
+- Video File: ${anomaly.video_file}
+- Frame File: ${anomaly.frame_file}
+            `);
+        }
+
+        // Auto-refresh anomalies every 5 seconds when monitoring
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                refreshAnomalies();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
