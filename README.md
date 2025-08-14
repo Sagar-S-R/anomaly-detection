@@ -26,6 +26,15 @@ A sophisticated multi-modal AI-powered anomaly detection system that provides re
 - **🎯 Anomaly Classification**: Detection of falls, aggression, medical emergencies
 - **📈 Confidence Assessment**: AI-powered uncertainty quantification
 
+### 🖥️ **Modern React Frontend** 🆕
+- **📱 Responsive Design**: Mobile-first Tailwind CSS interface
+- **🎥 Live Video Feed**: MJPEG stream with WebRTC-ready architecture
+- **🚨 Real-time Alerts**: Instant anomaly notifications with severity indicators
+- **📊 Interactive JSON Panel**: Collapsible real-time data display
+- **📹 Video Playback**: Full control video player with timestamp navigation
+- **📋 Anomaly Management**: Sortable list with thumbnails and detailed views
+- **🎛️ System Controls**: WebSocket management and display toggles
+
 ## 🏗️ System Architecture
 
 ```
@@ -129,19 +138,38 @@ echo "GROQ_API_KEY=your_groq_api_key_here" > .env
 
 ### 🏃 Running the System
 
-1. **Start the server**
+#### Backend (Core Detection Engine)
+1. **Start the backend server**
 ```bash
 cd backend
 python -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
 ```
 
-2. **Open the dashboard**
-Navigate to: `http://localhost:8000/dashboard.html`
+#### Frontend (Modern React Dashboard) - **NEW** 🆕
+1. **Install frontend dependencies**
+```bash
+cd frontend
+npm install
+```
 
-3. **Monitor in real-time**
-- View live video stream with anomaly overlays
-- Monitor JSON output for detailed analysis
-- Check saved anomaly frames and videos
+2. **Start the React development server**
+```bash
+npm start
+# OR use the convenience scripts:
+# Windows: start.bat
+# Unix/Mac: ./start.sh
+```
+
+3. **Access the dashboards**
+- **React Dashboard** (Recommended): `http://localhost:3000`
+- **Legacy HTML Dashboard**: `http://localhost:8000/dashboard`
+
+#### 🎯 Monitoring Features
+- **Live Video Stream**: Real-time MJPEG feed with anomaly detection
+- **WebSocket Updates**: Instant anomaly notifications and JSON data
+- **Video Playback**: Load and review recorded sessions
+- **Anomaly Management**: Browse, sort, and analyze detected events
+- **System Controls**: Start/stop monitoring, toggle displays
 
 ## 📁 Project Structure
 
@@ -149,26 +177,42 @@ Navigate to: `http://localhost:8000/dashboard.html`
 anomaly-detection/
 ├── README.md
 ├── .gitignore
-└── backend/
-    ├── app.py                 # Main FastAPI application
-    ├── dashboard.html         # Web monitoring interface
-    ├── requirements.txt       # Python dependencies
-    ├── .env                   # Environment variables
-    ├── pose_landmarker_heavy.task  # MediaPipe model
-    ├── tier1/
-    │   ├── __init__.py
-    │   └── tier1_pipeline.py  # Real-time anomaly detection
-    ├── tier2/
-    │   ├── __init__.py
-    │   └── tier2_pipeline.py  # Advanced AI analysis
-    ├── utils/
-    │   ├── __init__.py
-    │   ├── audio_processing.py    # Whisper audio transcription
-    │   ├── pose_processing.py     # MediaPipe pose analysis
-    │   ├── scene_processing.py    # CLIP/BLIP visual analysis
-    │   └── fusion_logic.py        # Multi-modal fusion & AI reasoning
-    ├── anomaly_frames/        # Saved anomaly images
-    └── recorded_videos/       # Recorded video sessions
+├── backend/
+│   ├── app.py                 # Main FastAPI application
+│   ├── dashboard.html         # Legacy web interface
+│   ├── requirements.txt       # Python dependencies
+│   ├── .env                   # Environment variables
+│   ├── pose_landmarker_heavy.task  # MediaPipe model
+│   ├── tier1/
+│   │   ├── __init__.py
+│   │   └── tier1_pipeline.py  # Real-time anomaly detection
+│   ├── tier2/
+│   │   ├── __init__.py
+│   │   └── tier2_pipeline.py  # Advanced AI analysis
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── audio_processing.py    # Whisper audio transcription
+│   │   ├── pose_processing.py     # MediaPipe pose analysis
+│   │   ├── scene_processing.py    # CLIP/BLIP visual analysis
+│   │   └── fusion_logic.py        # Multi-modal fusion & AI reasoning
+│   ├── anomaly_frames/        # Saved anomaly images
+│   └── recorded_videos/       # Recorded video sessions
+└── frontend/                  # Modern React Dashboard 🆕
+    ├── package.json          # Node.js dependencies  
+    ├── tailwind.config.js    # Tailwind CSS configuration
+    ├── start.bat / start.sh  # Platform-specific startup scripts
+    ├── public/
+    │   └── index.html        # HTML template
+    └── src/
+        ├── App.jsx           # Main React application
+        ├── index.js          # React entry point
+        ├── index.css         # Styles (Tailwind + custom)
+        └── components/       # React components
+            ├── LiveFeed.jsx      # Live video stream & status
+            ├── AnomalyList.jsx   # Anomaly history & management  
+            ├── VideoPlayback.jsx # Video player controls
+            ├── JsonOutput.jsx    # Real-time data display
+            └── VideoControls.jsx # System control panel
 ```
 
 ## 🔧 Configuration
