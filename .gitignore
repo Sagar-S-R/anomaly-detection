@@ -193,7 +193,7 @@ backend/temp_audio/
 
 # Data files
 *.csv
-*.json
+
 *.xml
 *.parquet
 *.feather
