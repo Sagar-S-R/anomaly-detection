@@ -22,6 +22,8 @@ _previous_landmarks = None
 _previous_arm_positions = None
 _last_anomaly_time = 0  # Cooldown mechanism
 _anomaly_cooldown_ms = 1000  # Original working cooldown
+_anomaly_counter = 0  # Counter for persistent anomaly detection
+_required_anomaly_frames = 3  # Require anomaly to persist for 3 frames
 
 def detect_aggressive_movements(landmarks, previous_landmarks=None):
     """Detect movements including aggressive actions, falls, and significant postural changes like bending"""
@@ -76,47 +78,46 @@ def detect_aggressive_movements(landmarks, previous_landmarks=None):
                                (prev_arms['left_shoulder'][1] - prev_arms['left_hip'][1])**2)
     torso_length_change = abs(current_torso_length - prev_torso_length)
     
-    print(f"🏃 Pose Debug: wrist_speed=L{left_wrist_speed:.3f}/R{right_wrist_speed:.3f}, head_mv={head_movement:.3f}, torso_change={torso_length_change:.3f}")
-    
-    # Check for rapid arm movements (potential punching) - original working threshold
-    if left_wrist_speed > 0.15 or right_wrist_speed > 0.15:  # Original working threshold
-        print("🚨 Pose anomaly: Rapid arm movement detected")
+    # BALANCED THRESHOLDS - Sensitive but not too sensitive for startup
+    # Check for rapid arm movements (potential punching) - BALANCED THRESHOLD
+    wrist_speed_threshold = 0.22  # BALANCED - between 0.15 and 0.30
+    if left_wrist_speed > wrist_speed_threshold or right_wrist_speed > wrist_speed_threshold:
+        print(f"🚨 Pose Anomaly: Rapid arm movement (L:{left_wrist_speed:.3f}, R:{right_wrist_speed:.3f} > {wrist_speed_threshold})")
         return True
     
-    # Check for significant head movement (bending, falling)
-    if head_movement > 0.08:  # Sensitive to head position changes
-        print("🚨 Pose anomaly: Significant head movement detected")
+    # Check for significant head movement (bending, falling) - BALANCED THRESHOLD
+    head_threshold = 0.15  # BALANCED - between 0.10 and 0.20
+    if head_movement > head_threshold:
+        print(f"🚨 Pose Anomaly: Significant head movement ({head_movement:.3f} > {head_threshold})")
         return True
     
-    # Check for torso bending (significant change in shoulder-hip distance)
-    if torso_length_change > 0.05:  # Detect bending/straightening
-        print("🚨 Pose anomaly: Torso bending/postural change detected")
+    # Check for torso bending (significant change in shoulder-hip distance) - BALANCED THRESHOLD
+    torso_threshold = 0.08  # BALANCED - between 0.06 and 0.12
+    if torso_length_change > torso_threshold:
+        print(f"🚨 Pose Anomaly: Torso bending/postural change ({torso_length_change:.3f} > {torso_threshold})")
         return True
     
-    # Check for extended arm positions (potential aggressive gestures)
-    left_arm_extended = (current_arms['left_wrist'][0] < current_arms['left_shoulder'][0] - 0.2 or 
-                        current_arms['left_wrist'][0] > current_arms['left_shoulder'][0] + 0.2)
-    right_arm_extended = (current_arms['right_wrist'][0] < current_arms['right_shoulder'][0] - 0.2 or 
-                         current_arms['right_wrist'][0] > current_arms['right_shoulder'][0] + 0.2)
+    # Check for extended arm positions (potential aggressive gestures) - improved logic
+    arm_extension_threshold = 0.35  # Increased from 0.2 - less sensitive
+    left_arm_extended = (current_arms['left_wrist'][0] < current_arms['left_shoulder'][0] - arm_extension_threshold or 
+                        current_arms['left_wrist'][0] > current_arms['left_shoulder'][0] + arm_extension_threshold)
+    right_arm_extended = (current_arms['right_wrist'][0] < current_arms['right_shoulder'][0] - arm_extension_threshold or 
+                         current_arms['right_wrist'][0] > current_arms['right_shoulder'][0] + arm_extension_threshold)
     
     if left_arm_extended or right_arm_extended:
-        # Check if arms are raised (potential fighting stance)
-        left_raised = current_arms['left_wrist'][1] < current_arms['left_shoulder'][1] - 0.1
-        right_raised = current_arms['right_wrist'][1] < current_arms['right_shoulder'][1] - 0.1
+        # Check if arms are raised (potential fighting stance) - more restrictive
+        arm_raise_threshold = 0.20  # Increased from 0.1 - less sensitive
+        left_raised = current_arms['left_wrist'][1] < current_arms['left_shoulder'][1] - arm_raise_threshold
+        right_raised = current_arms['right_wrist'][1] < current_arms['right_shoulder'][1] - arm_raise_threshold
         
-        if left_raised or right_raised:
-            print("🚨 Pose anomaly: Extended/raised arm position detected")
+        # Additional check: both arms must be in aggressive position
+        if (left_raised and right_raised) or (left_raised and right_arm_extended) or (right_raised and left_arm_extended):
+            print(f"🚨 Pose Anomaly: Extended/raised arm position (ext_thresh:{arm_extension_threshold}, raise_thresh:{arm_raise_threshold})")
             return True
     
     return False
 
 
-
-def process_pose_frame(frame):
-    # Process a single frame (simplified)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    # Placeholder: Integrate with landmarker logic
-    return 0  # Update with actual anomaly count
 
 def process_pose(video_path):
     cap = cv2.VideoCapture(video_path)
@@ -166,8 +167,10 @@ def process_pose(video_path):
     return len(pose_anomalies), sampled_frames, timestamps, fps
 
 def process_pose_frame(frame):
-    global _streaming_timestamp, _previous_landmarks, _last_anomaly_time
-    # Process a single frame (simplified)
+    global _streaming_timestamp, _previous_landmarks, _last_anomaly_time, _anomaly_counter
+    """Process a single frame for pose anomaly detection with temporal smoothing"""
+    
+    # Convert frame to MediaPipe format
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     _streaming_timestamp += 33  # Increment by ~33ms (30 FPS)
     
@@ -175,14 +178,15 @@ def process_pose_frame(frame):
     if _streaming_timestamp - _last_anomaly_time < _anomaly_cooldown_ms:
         return 0  # Still in cooldown period
     
-    result = landmarker.detect_for_video(mp_image, _streaming_timestamp)  # Use incremental timestamp
+    result = landmarker.detect_for_video(mp_image, _streaming_timestamp)
     
-    anomaly_detected = 0
+    frame_anomaly_detected = False
+    fall_detected = False  # Track fall detection specifically for adaptive smoothing
     
     if result.pose_landmarks:
         landmarks = result.pose_landmarks[0]
         
-        # Check for fall/crawl patterns
+        # Check for fall/crawl patterns - improved threshold
         xs = [lm.x * mp_image.width for lm in landmarks]
         ys = [lm.y * mp_image.height for lm in landmarks]
         min_x, max_x = min(xs), max(xs)
@@ -191,18 +195,58 @@ def process_pose_frame(frame):
         height = max_y - min_y
         ratio = height / width
         
-        if ratio < 0.4:  # Slightly more restrictive threshold for fall/crawl detection
-            anomaly_detected = 1
+        # Enhanced fall detection - multiple validation methods
+        fall_threshold = 0.35  # Less restrictive than 0.25 to catch real falls
+        fall_detected = False
+        
+        if ratio < fall_threshold:
+            # Method 1: Traditional horizontal check
+            shoulder_y = (landmarks[11].y + landmarks[12].y) / 2
+            hip_y = (landmarks[23].y + landmarks[24].y) / 2
+            horizontal_alignment = abs(shoulder_y - hip_y) < 0.08  # Slightly more lenient
+            
+            # Method 2: Check if person is low to ground (Y position of key points)
+            avg_torso_y = (shoulder_y + hip_y) / 2
+            ground_proximity = avg_torso_y > 0.6  # Lower half of frame
+            
+            # Method 3: Check head position relative to body
+            head_y = landmarks[0].y  # Nose position
+            head_below_shoulders = head_y > shoulder_y + 0.05
+            
+            # Fall detected if ANY of these conditions are met (not ALL)
+            if horizontal_alignment or (ground_proximity and head_below_shoulders):
+                print(f"🚨 Pose Anomaly: Fall detected (ratio:{ratio:.3f}, horizontal:{horizontal_alignment}, ground:{ground_proximity}, head_low:{head_below_shoulders})")
+                fall_detected = True
+            
+        if fall_detected:
+            frame_anomaly_detected = True
         
         # Check for aggressive movements (punching, fighting)
         if _previous_landmarks and detect_aggressive_movements(landmarks, _previous_landmarks):
-            anomaly_detected = 1
-        
-        # If anomaly detected, update the last anomaly time
-        if anomaly_detected:
-            _last_anomaly_time = _streaming_timestamp
+            frame_anomaly_detected = True
         
         # Store current landmarks for next frame comparison
         _previous_landmarks = landmarks
     
-    return anomaly_detected  # Return 1 for anomaly, 0 for normal
+    # Adaptive temporal smoothing: different requirements based on anomaly type
+    if frame_anomaly_detected:
+        _anomaly_counter += 1
+        print(f"🔍 Pose: Anomaly frame count: {_anomaly_counter}/{_required_anomaly_frames}")
+    else:
+        _anomaly_counter = max(0, _anomaly_counter - 1)  # Decay counter
+    
+    # Adaptive confirmation based on anomaly strength
+    # For falls: require only 2 frames (faster response)
+    # For other anomalies: require 3 frames (more filtering)
+    if fall_detected and _anomaly_counter >= 2:
+        _last_anomaly_time = _streaming_timestamp
+        _anomaly_counter = 0
+        print("🚨 Pose: CONFIRMED FALL ANOMALY (fast track)")
+        return 1
+    elif not fall_detected and _anomaly_counter >= _required_anomaly_frames:
+        _last_anomaly_time = _streaming_timestamp
+        _anomaly_counter = 0
+        print("🚨 Pose: CONFIRMED ANOMALY after temporal filtering")
+        return 1
+    
+    return 0  # No confirmed anomaly

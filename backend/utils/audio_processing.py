@@ -77,8 +77,7 @@ class AudioStream:
                     data = self.stream.read(self.chunk, exception_on_overflow=False)
                     self.buffer.append(data)
                     chunk_count += 1
-                    if chunk_count % 10 == 0:  # Log every 10 chunks
-                        print(f"Audio captured {chunk_count} chunks, buffer size: {len(self.buffer)}")
+                    # Removed annoying log spam
                 else:
                     print("Audio stream not active")
                     break
@@ -88,23 +87,19 @@ class AudioStream:
         print("Audio capture thread ended")
 
     def get_chunk(self):
-        print(f"Audio buffer status: {len(self.buffer)}/{self.buffer.maxlen} chunks, running: {self.running}")
-        
+        """Get audio chunk with non-blocking approach and timeout handling"""
         if not self.running:
-            print("Audio stream not running")
             return None
             
-        # Be less strict - allow processing with at least half buffer
-        min_chunks = max(8, self.buffer.maxlen // 2)  # At least 8 chunks or half buffer
+        # Be more lenient - allow processing with fewer chunks
+        min_chunks = max(4, self.buffer.maxlen // 4)  # At least 4 chunks or quarter buffer
         if len(self.buffer) < min_chunks:
-            print(f"Audio buffer insufficient: {len(self.buffer)}/{min_chunks} minimum")
             return None
             
         try:
             # Use available buffer data
             available_chunks = list(self.buffer)
             audio_bytes = b''.join(available_chunks)
-            print(f"Created audio data from {len(available_chunks)} chunks: {len(audio_bytes)} bytes")
             
             # Create temp directory if it doesn't exist
             temp_dir = os.path.join(os.path.dirname(__file__), '..', 'temp_audio')
@@ -120,21 +115,12 @@ class AudioStream:
                 wf.setframerate(self.rate)
                 wf.writeframes(audio_bytes)
             
-            # Small delay to ensure file is fully written
-            time.sleep(0.01)
-            
             # Verify file exists and has content before returning
             if os.path.exists(temp_path) and os.path.getsize(temp_path) > 44:  # WAV header is 44 bytes
-                file_size = os.path.getsize(temp_path)
-                print(f"Audio chunk created successfully: {temp_path} ({file_size} bytes)")
                 return temp_path
             else:
-                print(f"Audio file creation failed: {temp_path}")
                 return None
         except Exception as e:
-            print(f"Audio processing error: {e}")
-            import traceback
-            print(f"Audio traceback: {traceback.format_exc()}")
             return None
 
     def stop(self):
@@ -153,49 +139,71 @@ def extract_audio(video_path):
     return None
 
 def chunk_and_transcribe_tiny(audio_path):
-    # Simplified version that works directly with WAV files
+    """Transcribe audio with timeout and robust error handling"""
     if not audio_path:
-        print("No audio path provided")
+        print("🎤 No audio path provided")
         return []
-    
+        
+    if not os.path.exists(audio_path):
+        print(f"🎤 Audio file not found: {audio_path}")
+        return []
+        
     try:
-        # Verify file exists and has content
-        if not os.path.exists(audio_path):
-            print(f"Audio file not found: {audio_path}")
-            return []
-        
         file_size = os.path.getsize(audio_path)
-        if file_size <= 44:  # WAV header size
-            print(f"Audio file too small ({file_size} bytes): {audio_path}")
+        # Only log significant audio events, not every chunk
+        if file_size < 1000:
+            # Clean up small file
+            try:
+                os.remove(audio_path)
+            except:
+                pass
             return []
         
-        print(f"Transcribing audio file: {audio_path} ({file_size} bytes)")
+        # Use threading timeout for Windows compatibility
+        import threading
+        import queue
         
-        # Try direct transcription without chunking for WAV files
-        result = whisper_tiny.transcribe(audio_path, fp16=False)
-        transcript = result["text"].strip()
+        result_queue = queue.Queue()
         
-        print(f"Transcription result: '{transcript}'")
+        def transcribe_with_timeout():
+            try:
+                result = whisper_tiny.transcribe(audio_path, fp16=False)
+                result_queue.put(("success", result))
+            except Exception as e:
+                result_queue.put(("error", str(e)))
         
-        # Clean up file
+        # Start transcription in a separate thread
+        transcription_thread = threading.Thread(target=transcribe_with_timeout)
+        transcription_thread.daemon = True
+        transcription_thread.start()
+        
         try:
-            os.remove(audio_path)
-            print(f"Cleaned up audio file: {audio_path}")
-        except Exception as cleanup_error:
-            print(f"Warning: Could not delete {audio_path}: {cleanup_error}")
+            # Wait for result with 1-second timeout (reduced from 3)
+            result_type, result_data = result_queue.get(timeout=1.0)
             
-        return [transcript] if transcript else []
+            if result_type == "error":
+                return []
+            
+            text = result_data["text"].strip()
+            if text:
+                print(f"🎤 Audio detected: '{text}'")  # Only log when we actually get text
+                return [text]
+            else:
+                return []
+                
+        except queue.Empty:
+            return []
         
     except Exception as e:
-        print(f"Audio transcription error: {e}")
-        # Clean up on error
+        print(f"🎤 Transcription error: {e}")
+        return []
+    finally:
+        # Always clean up file
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
-                print(f"Cleaned up failed audio file: {audio_path}")
-        except:
+        except Exception as cleanup_error:
             pass
-        return []
 
 def transcribe_large(audio_path):
     # Enhanced version with better error handling

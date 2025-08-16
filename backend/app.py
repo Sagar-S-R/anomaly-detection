@@ -9,10 +9,12 @@ import asyncio
 import queue
 import os
 import time
+import json
 from datetime import datetime
 from threading import Thread
 import numpy as np
 import warnings
+from collections import deque
 
 # Suppress various warnings and set environment variables
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -25,12 +27,56 @@ app = FastAPI()
 app.mount("/anomaly_frames", StaticFiles(directory="anomaly_frames"), name="anomaly_frames")
 app.mount("/recorded_videos", StaticFiles(directory="recorded_videos"), name="recorded_videos")
 
-# Global storage for anomaly events
+# Global storage for anomaly events with structured logging
 anomaly_events = []
+
+# Global asynchronous queues for multimodal fusion
+video_queue = queue.Queue(maxsize=30)  # Store video embeddings + timestamps
+audio_queue = queue.Queue(maxsize=50)  # Store audio transcripts + timestamps
+fusion_results_queue = queue.Queue(maxsize=20)  # Store fused results for Tier 1
+
+# Performance monitoring counters
+performance_stats = {
+    "frames_captured": 0,
+    "frames_processed": 0,
+    "audio_chunks_captured": 0,
+    "audio_transcribed": 0,
+    "fusion_video_audio": 0,
+    "fusion_video_only": 0,
+    "tier1_anomalies_detected": 0,
+    "tier2_analyses_triggered": 0,
+    "tier2_analyses_completed": 0,
+    "tier2_analyses_failed": 0,
+    "pipeline_start_time": None
+}
+
+# Global anomaly tracking to prevent duplicates
+last_anomaly_time = 0
+anomaly_cooldown_period = 1.0  # 1 second cooldown between anomalies (reduced from 3)
+current_anomaly_event = None  # Track current ongoing anomaly
 
 # Global status for live stream overlay
 current_status = "Normal"
 current_details = "Initializing..."
+frame_counter = 0  # Global frame counter for consistent logging
+
+def log_structured_event(frame_id, pose_state, scene_score, audio_available, status, reasoning="", visual_score=0.0, audio_score=0.0, multimodal_agreement=0.0):
+    """Enhanced structured logging for all processing events"""
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "frame_id": frame_id,
+        "pose_state": pose_state,
+        "scene_anomaly_score": round(scene_score, 3),
+        "visual_score": round(visual_score, 3),
+        "audio_available": audio_available,
+        "audio_score": round(audio_score, 3),
+        "tier1_status": status,
+        "reasoning_summary": reasoning,
+        "multimodal_agreement": round(multimodal_agreement, 3),
+        "processing_pipeline": "tier1_continuous"
+    }
+    print(f"📊 STRUCTURED_LOG: {json.dumps(log_entry)}")
+    return log_entry
 
 def add_status_overlay(frame, status, details=""):
     """Add colored overlay to frame based on anomaly status"""
@@ -192,22 +238,35 @@ async def test_stream():
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
+def print_performance_stats():
+    """Print concise performance statistics"""
+    if performance_stats["pipeline_start_time"] is None:
+        performance_stats["pipeline_start_time"] = time.time()
+        return
+    
+    # Only print stats occasionally, not every 5 seconds
+    elapsed = time.time() - performance_stats["pipeline_start_time"]
+    if elapsed % 30 < 5:  # Only every 30 seconds
+        fps_processed = performance_stats["frames_processed"] / elapsed if elapsed > 0 else 0
+        audio_rate = performance_stats["audio_transcribed"] / elapsed if elapsed > 0 else 0
+        
+        print(f"\n📊 PIPELINE SUMMARY (Runtime: {elapsed:.1f}s)")
+        print(f"🎬 Video: {fps_processed:.1f} FPS | 🎤 Audio: {audio_rate:.1f} chunks/s")
+        print(f"🚨 T1: {performance_stats['tier1_anomalies_detected']} anomalies | 🔬 T2: {performance_stats['tier2_analyses_completed']}/{performance_stats['tier2_analyses_triggered']} analyses")
+
 @app.websocket("/stream_video")
 async def stream_video(websocket: WebSocket):
     await websocket.accept()
     
     # Try multiple times to open camera
     video_cap = None
-    
-    # Suppress OpenCV warnings during camera setup
     cv2.setLogLevel(0)
     
     for attempt in range(3):
         video_cap = cv2.VideoCapture(0)
-        video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer to minimize lag
+        video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         if video_cap.isOpened():
-            # Test if we can actually read a frame
             ret, test_frame = video_cap.read()
             if ret:
                 print(f"✅ Camera opened successfully on attempt {attempt + 1}")
@@ -218,209 +277,409 @@ async def stream_video(websocket: WebSocket):
         else:
             video_cap = None
         
-        if attempt < 2:  # Don't sleep on last attempt
+        if attempt < 2:
             await asyncio.sleep(1)
     
     if video_cap is None or not video_cap.isOpened():
         await websocket.send_json({"error": "Could not open video stream after multiple attempts"})
         return
 
-    # Get video properties for recording
+    # Get video properties
     width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = video_cap.get(cv2.CAP_PROP_FPS) or 30
     
-    # Setup video recording with better codec settings
+    # Setup video recording
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     video_filename = f"recorded_videos/session_{timestamp}.mp4"
     
-    # Use more compatible codec settings to reduce FFmpeg warnings
     try:
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')  # Try XVID first
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
         video_writer = cv2.VideoWriter(video_filename, fourcc, fps, (width, height))
         if not video_writer.isOpened():
-            # Fallback to mp4v if XVID fails
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             video_writer = cv2.VideoWriter(video_filename, fourcc, fps, (width, height))
     except:
-        # Final fallback
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video_writer = cv2.VideoWriter(video_filename, fourcc, fps, (width, height))
     
     print(f"📹 Recording video to: {video_filename}")
 
-    audio_stream = AudioStream()  # Start audio capture
+    # Start the three worker threads
+    audio_stream = AudioStream()
     audio_stream.start()
-
-    frame_queue = queue.Queue(maxsize=10)  # Buffer for frames
-    anomaly_detected = False
-
-    def capture_frames():
-        while True:
-            ret, frame = video_cap.read()
-            if not ret:
-                break
-            if not frame_queue.full():
-                frame_queue.put(frame)
-
-    frame_thread = Thread(target=capture_frames)
-    frame_thread.start()
-
+    
+    # Start video capture worker
+    video_thread = Thread(target=video_capture_worker, args=(video_cap, video_writer, fps))
+    video_thread.daemon = True
+    video_thread.start()
+    
+    # Start audio capture worker  
+    audio_thread = Thread(target=audio_capture_worker, args=(audio_stream,))
+    audio_thread.daemon = True
+    audio_thread.start()
+    
+    # Start fusion worker
+    fusion_thread = Thread(target=fusion_worker)
+    fusion_thread.daemon = True
+    fusion_thread.start()
+    
+    print("🚀 All workers started - processing fused results")
+    
     try:
-        frame_interval = int(fps)  # For 1 FPS
-        frame_count = 0
-        session_start_time = time.time()
+        last_stats_time = time.time()
         
         while True:
-            if frame_queue.empty():
-                await asyncio.sleep(0.01)
-                continue
-
-            frame = frame_queue.get()
-            frame_count += 1
-            
-            # Record every frame to video with error handling
             try:
-                if video_writer.isOpened():
-                    video_writer.write(frame)
-            except Exception as e:
-                # Silently handle video writing errors to avoid spam
-                pass
-            
-            # Process only every Nth frame for anomaly detection
-            if frame_count % frame_interval != 0:
+                # Get fused result from fusion worker (faster timeout)
+                fused_result = fusion_results_queue.get(timeout=0.5)
+            except queue.Empty:
+                # Print stats if no results for a while
+                if time.time() - last_stats_time > 5.0:
+                    print_performance_stats()
+                    last_stats_time = time.time()
                 continue
-
-            # Calculate current timestamp in video
-            current_timestamp = (frame_count / fps)
             
-            # Get audio chunk (2-sec window)
-            audio_chunk = audio_stream.get_chunk()  # Get latest 2-sec audio
-            print(f"🎤 Audio chunk available: {bool(audio_chunk)}")
-
-            # Run Tier 1 on current frame and audio
+            # Extract data from fused result
+            frame = fused_result["frame"]
+            frame_id = fused_result["frame_id"]
+            audio_chunk_path = fused_result["audio_chunk_path"]
+            fusion_status = fused_result["fusion_status"]
+            timestamp = fused_result["timestamp"]
+            
+            # Run Tier 1 anomaly detection
             try:
-                tier1_result = run_tier1_continuous(frame, audio_chunk)
+                tier1_result = run_tier1_continuous(frame, audio_chunk_path)
                 
-                # Update global status for live stream overlay
-                global current_status, current_details
-                current_status = tier1_result["status"]
-                current_details = tier1_result["details"]
+                status = tier1_result["status"]
+                details = tier1_result["details"]
                 
-                # Add frame info to result
-                tier1_result["frame_count"] = frame_count
-                tier1_result["timestamp"] = current_timestamp
-                tier1_result["video_file"] = video_filename
+                if status == "Suspected Anomaly":
+                    # Check cooldown period to prevent duplicate anomalies
+                    global last_anomaly_time, current_anomaly_event
+                    time_since_last = timestamp - last_anomaly_time
+                    
+                    if time_since_last < anomaly_cooldown_period:
+                        # This is part of the same incident - update but don't process fully
+                        if current_anomaly_event:
+                            current_anomaly_event["end_time"] = timestamp
+                            current_anomaly_event["duration"] = timestamp - current_anomaly_event["timestamp"]
+                            current_anomaly_event["frame_count"] += 1
+                            print(f"🔄 Continuing incident (cooldown: {time_since_last:.1f}s)")
+                        # Still send to frontend but mark as continuation
+                        tier1_result.update({
+                            "status": "Normal",  # Don't trigger new anomaly alert
+                            "details": "Monitoring...",
+                            "incident_continuation": True
+                        })
+                    else:
+                        # This is a NEW anomaly incident - process fully
+                        last_anomaly_time = timestamp
+                        performance_stats["tier1_anomalies_detected"] += 1
+                        print(f"\n🚨 NEW ANOMALY INCIDENT #{performance_stats['tier1_anomalies_detected']}")
+                        print(f"📍 Details: {details}")
+                        print(f"🔀 Fusion: {fusion_status} | Frame: {frame_id} | Time: {timestamp:.2f}s")
+                        
+                        # Save Tier 1 anomaly snapshot and metadata
+                        anomaly_frame_filename = f"anomaly_frames/tier1_anomaly_{int(timestamp)}_{frame_id}.jpg"
+                        cv2.imwrite(anomaly_frame_filename, frame)
+                        
+                        # Store NEW anomaly event with Tier 1 data
+                        anomaly_event = {
+                            "frame_id": frame_id,
+                            "timestamp": timestamp,
+                            "end_time": timestamp,  # Will be updated if incident continues
+                            "duration": 0.0,  # Will be calculated
+                            "frame_count": 1,  # Will be incremented if incident continues
+                            "frame_file": anomaly_frame_filename,
+                            "video_file": video_filename,
+                            "details": details,
+                            "fusion_status": fusion_status,
+                            "session_time": datetime.now().isoformat(),
+                            "tier1_result": tier1_result,
+                            "tier2_analysis": None  # Will be populated when Tier 2 completes
+                        }
+                        anomaly_events.append(anomaly_event)
+                        current_anomaly_event = anomaly_event  # Track current incident
+                        
+                        # TRIGGER TIER 2 ANALYSIS (synchronous but optimized)
+                        performance_stats["tier2_analyses_triggered"] += 1
+                        print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{performance_stats['tier2_analyses_triggered']}...")
+                        
+                        try:
+                            tier2_result = run_tier2_continuous(frame.copy(), audio_chunk_path, tier1_result.copy())
+                            performance_stats["tier2_analyses_completed"] += 1
+                            
+                            # Update anomaly event with Tier 2 analysis
+                            anomaly_event["tier2_analysis"] = tier2_result
+                            tier1_result["tier2_analysis"] = tier2_result
+                            
+                            print(f"✅ TIER 2 ANALYSIS COMPLETE")
+                            print(f"📋 Summary: {tier2_result.get('reasoning_summary', 'Analysis complete')}")
+                            
+                            # Send separate Tier 2 WebSocket message
+                            tier2_websocket_result = {
+                                "type": "tier2_analysis",
+                                "frame_id": frame_id,
+                                "timestamp": timestamp,
+                                "fusion_status": fusion_status,
+                                **tier2_result
+                            }
+                            
+                            try:
+                                if websocket.client_state.name == "CONNECTED":
+                                    await websocket.send_json(tier2_websocket_result)
+                                    print(f"📤 Tier 2 results sent to frontend")
+                            except Exception as send_error:
+                                print(f"❌ Tier 2 WebSocket error: {send_error}")
+                                
+                        except Exception as tier2_error:
+                            performance_stats["tier2_analyses_failed"] += 1
+                            print(f"❌ TIER 2 ANALYSIS FAILED: {tier2_error}")
+                            
+                            # Send error tier2 result
+                            tier2_error_result = {
+                                "type": "tier2_analysis",
+                                "frame_id": frame_id,
+                                "timestamp": timestamp,
+                                "fusion_status": fusion_status,
+                                "error": str(tier2_error),
+                                "status": "Error",
+                                "reasoning_summary": f"Tier 2 analysis failed: {str(tier2_error)}"
+                            }
+                            try:
+                                if websocket.client_state.name == "CONNECTED":
+                                    await websocket.send_json(tier2_error_result)
+                            except:
+                                pass
+                else:
+                    # No anomaly detected - reset cooldown tracking
+                    current_anomaly_event = None
                 
-                # Send result with WebSocket disconnect handling
+                # Add fusion metadata to result
+                tier1_result.update({
+                    "frame_id": frame_id,
+                    "fusion_status": fusion_status,
+                    "timestamp": timestamp,
+                    "video_file": video_filename
+                })
+                
+                # Send result via WebSocket
                 try:
                     if websocket.client_state.name == "CONNECTED":
                         await websocket.send_json(tier1_result)
                     else:
-                        print("WebSocket not connected, skipping send")
+                        print("WebSocket not connected, stopping")
                         break
                 except WebSocketDisconnect:
-                    print("WebSocket disconnected during Tier 1 result send")
+                    print("WebSocket disconnected")
                     break
                 except Exception as e:
                     print(f"WebSocket send error: {e}")
                     break
-                except Exception as send_error:
-                    print(f"WebSocket send error: {send_error}")
-                    break
                     
             except Exception as e:
-                import traceback
-                error_details = traceback.format_exc()
-                print(f"Tier 1 processing error: {e}")
-                print(f"Full error traceback: {error_details}")
+                print(f"❌ Tier 1 processing error: {e}")
+                continue
                 
-                # Send basic result without audio processing
-                tier1_result = {
-                    "status": "Normal", 
-                    "details": "Video processing only (audio error)",
-                    "error": f"Audio processing failed: {str(e)}",
-                    "frame_count": frame_count,
-                    "timestamp": current_timestamp,
-                    "video_file": video_filename
-                }
-                
-                # Send error result with WebSocket disconnect handling
-                try:
-                    await websocket.send_json(tier1_result)
-                except WebSocketDisconnect:
-                    print("WebSocket disconnected during error result send")
-                    break
-                except Exception as send_error:
-                    print(f"WebSocket send error during error handling: {send_error}")
-                    break
-
-            if tier1_result["status"] == "Suspected Anomaly":
-                anomaly_detected = True
-                
-                # Save anomaly frame
-                anomaly_frame_filename = f"anomaly_frames/anomaly_{timestamp}_{frame_count}.jpg"
-                cv2.imwrite(anomaly_frame_filename, frame)
-                
-                # Store anomaly event
-                anomaly_event = {
-                    "timestamp": current_timestamp,
-                    "frame_count": frame_count,
-                    "frame_file": anomaly_frame_filename,
-                    "video_file": video_filename,
-                    "details": tier1_result["details"],
-                    "session_time": datetime.now().isoformat()
-                }
-                anomaly_events.append(anomaly_event)
-                
-                print(f"🚨 ANOMALY SAVED: Frame {frame_count} at {current_timestamp:.2f}s -> {anomaly_frame_filename}")
-                
-                # Run Tier 2 on current frame/audio for reasoning
-                tier2_result = run_tier2_continuous(frame, audio_chunk, tier1_result)
-                
-                # Add frame info to tier2 result
-                tier2_result["frame_count"] = frame_count
-                tier2_result["timestamp"] = current_timestamp
-                tier2_result["video_file"] = video_filename
-                tier2_result["frame_file"] = anomaly_frame_filename
-                
-                # Update anomaly event with tier2 info
-                anomaly_event.update({
-                    "threat_severity_index": tier2_result.get("threat_severity_index", 0.5),
-                    "reasoning_summary": tier2_result.get("reasoning_summary", ""),
-                    "visual_score": tier2_result.get("visual_score", 0.5)
-                })
-                
-                # Send Tier 2 result with WebSocket disconnect handling
-                try:
-                    await websocket.send_json(tier2_result)
-                except WebSocketDisconnect:
-                    print("WebSocket disconnected during Tier 2 result send")
-                    break
-                except Exception as send_error:
-                    print(f"WebSocket send error during Tier 2: {send_error}")
-                    break
-
-            await asyncio.sleep(1 / fps)  # Control rate
     except WebSocketDisconnect:
-        print("WebSocket client disconnected - stopping video stream")
+        print("WebSocket client disconnected")
     except Exception as e:
-        print(f"Unexpected error in video stream: {e}")
+        print(f"Unexpected error: {e}")
         try:
             await websocket.send_json({"error": str(e)})
-        except (WebSocketDisconnect, Exception):
-            print("Could not send error message - WebSocket already closed")
+        except:
+            pass
     finally:
         # Cleanup resources
         try:
             video_cap.release()
-            video_writer.release()  # Close video recording
+            video_writer.release()
             audio_stream.stop()
-            frame_thread.join()
             print(f"📹 Video saved: {video_filename}")
-            print(f"🚨 Anomalies detected: {len([e for e in anomaly_events if e['video_file'] == video_filename])}")
-        except Exception as cleanup_error:
-            print(f"Error during cleanup: {cleanup_error}")
+            print(f"🚨 Final Tier 1 anomalies: {performance_stats['tier1_anomalies_detected']}")
+            print(f"🔬 Final Tier 2 analyses: {performance_stats['tier2_analyses_completed']}")
+            print_performance_stats()
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+
+def video_capture_worker(video_cap, video_writer, fps):
+    """Video Thread: Capture frames at 30 FPS, process every 5th frame (~6 FPS)"""
+    global performance_stats
+    frame_count = 0
+    processed_count = 0
+    start_time = time.time()
+    
+    print("🎬 Video capture worker started")
+    
+    while True:
+        ret, frame = video_cap.read()
+        if not ret:
+            print("❌ Video capture failed")
+            break
+            
+        performance_stats["frames_captured"] += 1
+        frame_count += 1
+        
+        # Record every frame to video
+        try:
+            if video_writer.isOpened():
+                video_writer.write(frame)
+        except Exception as e:
+            pass  # Silent video writing errors
+        
+        # Process every 5th frame (~6 FPS)
+        if frame_count % 5 == 0:
+            current_timestamp = time.time()
+            
+            try:
+                # Create video embedding/data packet
+                video_data = {
+                    "frame_id": frame_count,
+                    "timestamp": current_timestamp,
+                    "frame": frame.copy(),  # Make a copy for thread safety
+                    "session_time": current_timestamp - start_time
+                }
+                
+                # Add to video queue (non-blocking)
+                if not video_queue.full():
+                    video_queue.put(video_data)
+                    performance_stats["frames_processed"] += 1
+                    processed_count += 1
+                else:
+                    # Only log queue full occasionally
+                    if frame_count % 300 == 0:
+                        print("⚠️ Video queue full, dropping frames")
+                    
+            except Exception as e:
+                print(f"❌ Video processing error: {e}")
+        
+        # REMOVED SPAM: Only log stats every 30 seconds instead of every 10 seconds
+
+def audio_capture_worker(audio_stream):
+    """Audio Thread: Capture and transcribe audio continuously"""
+    global performance_stats
+    from utils.audio_processing import chunk_and_transcribe_tiny
+    
+    chunk_count = 0
+    transcribed_count = 0
+    start_time = time.time()
+    
+    print("🎤 Audio capture worker started")
+    
+    while True:
+        try:
+            # Get audio chunk (blocks until available)
+            audio_chunk_path = audio_stream.get_chunk()
+            
+            if audio_chunk_path:
+                performance_stats["audio_chunks_captured"] += 1
+                chunk_count += 1
+                current_timestamp = time.time()
+                
+                # Transcribe audio
+                transcripts = chunk_and_transcribe_tiny(audio_chunk_path)
+                
+                if transcripts:
+                    audio_text = " | ".join(transcripts)
+                    performance_stats["audio_transcribed"] += 1
+                    transcribed_count += 1
+                    
+                    # Create audio data packet
+                    audio_data = {
+                        "timestamp": current_timestamp,
+                        "audio_text": audio_text,
+                        "transcripts": transcripts,
+                        "chunk_path": audio_chunk_path
+                    }
+                    
+                    # Add to audio queue (non-blocking)
+                    if not audio_queue.full():
+                        audio_queue.put(audio_data)
+                    else:
+                        # Only log queue full occasionally
+                        if chunk_count % 100 == 0:
+                            print("⚠️ Audio queue full, dropping transcripts")
+                
+                # REMOVED SPAM: No more regular audio logging
+            else:
+                time.sleep(0.05)  # Brief pause if no audio available
+                
+        except Exception as e:
+            print(f"❌ Audio worker error: {e}")
+            time.sleep(0.1)
+
+def fusion_worker():
+    """Fusion Worker: Align video and audio streams with temporal matching"""
+    global performance_stats
+    
+    print("🔀 Fusion worker started")
+    
+    # Keep recent audio data for temporal matching
+    recent_audio = deque(maxlen=20)  # Store last 20 audio chunks (~5 seconds)
+    
+    while True:
+        try:
+            # Get video frame (blocking with shorter timeout)
+            try:
+                video_data = video_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            
+            video_timestamp = video_data["timestamp"]
+            
+            # Update recent audio buffer
+            while not audio_queue.empty():
+                try:
+                    audio_data = audio_queue.get_nowait()
+                    recent_audio.append(audio_data)
+                except queue.Empty:
+                    break
+            
+            # Find nearest audio within ±0.5s
+            best_audio = None
+            min_time_diff = float('inf')
+            
+            for audio_data in recent_audio:
+                time_diff = abs(video_timestamp - audio_data["timestamp"])
+                if time_diff <= 0.5 and time_diff < min_time_diff:
+                    best_audio = audio_data
+                    min_time_diff = time_diff
+            
+            # Create fused result
+            if best_audio:
+                fused_result = {
+                    "frame_id": video_data["frame_id"],
+                    "timestamp": video_timestamp,
+                    "frame": video_data["frame"],
+                    "audio_text": best_audio["audio_text"],
+                    "audio_chunk_path": best_audio["chunk_path"],
+                    "fusion_status": "video+audio",
+                    "time_sync_diff": min_time_diff
+                }
+                performance_stats["fusion_video_audio"] += 1
+                # REMOVED SPAM: No more fusion success logging
+            else:
+                fused_result = {
+                    "frame_id": video_data["frame_id"],
+                    "timestamp": video_timestamp,
+                    "frame": video_data["frame"],
+                    "audio_text": None,
+                    "audio_chunk_path": None,
+                    "fusion_status": "video-only",
+                    "time_sync_diff": None
+                }
+                performance_stats["fusion_video_only"] += 1
+                # REMOVED SPAM: No more fusion miss logging
+            
+            # Add to fusion results queue
+            if not fusion_results_queue.full():
+                fusion_results_queue.put(fused_result)
+            # Silently drop if queue is full
+                
+        except Exception as e:
+            print(f"❌ Fusion worker error: {e}")
+            time.sleep(0.1)
 
 @app.get("/anomaly_events")
 async def get_anomaly_events():

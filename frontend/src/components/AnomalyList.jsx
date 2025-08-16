@@ -120,6 +120,17 @@ const AnomalyList = ({ anomalies, onJumpToAnomaly, onRefresh }) => {
                       `}>
                         {threat.level} - {((anomaly.threat_severity_index || 0.5) * 100).toFixed(0)}%
                       </span>
+                      
+                      {/* Tier 2 Analysis Status */}
+                      {anomaly.tier2_analysis ? (
+                        <span className="px-3 py-2 rounded-full text-sm font-bold bg-green-500 text-white shadow-sm">
+                          ✅ AI Analyzed
+                        </span>
+                      ) : (
+                        <span className="px-3 py-2 rounded-full text-sm font-bold bg-yellow-500 text-white shadow-sm">
+                          ⏳ Analyzing...
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-3 text-sm">
@@ -159,7 +170,7 @@ const AnomalyList = ({ anomalies, onJumpToAnomaly, onRefresh }) => {
                       )}
 
                       {/* Scores */}
-                      <div className="flex gap-3 mt-4">
+                      <div className="flex flex-wrap gap-2 mt-4">
                         {anomaly.visual_score !== undefined && (
                           <div className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg text-xs font-semibold">
                             <div className="flex items-center gap-2">
@@ -175,9 +186,29 @@ const AnomalyList = ({ anomalies, onJumpToAnomaly, onRefresh }) => {
                           <div className="bg-purple-100 text-purple-800 px-3 py-2 rounded-lg text-xs font-semibold">
                             <div className="flex items-center gap-2">
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6.343 6.343a1 1 0 011.414 0L12 10.586l4.243-4.243a1 1 0 011.414 1.414L13.414 12l4.243 4.243a1 1 0 01-1.414 1.414L12 13.414l-4.243 4.243a1 1 0 01-1.414-1.414L10.586 12 6.343 7.757a1 1 0 010-1.414z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728" />
                               </svg>
                               Audio: {(anomaly.audio_score * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                        )}
+                        {anomaly.text_alignment_score !== undefined && (
+                          <div className="bg-green-100 text-green-800 px-3 py-2 rounded-lg text-xs font-semibold">
+                            <div className="flex items-center gap-2">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Text: {(anomaly.text_alignment_score * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                        )}
+                        {anomaly.multimodal_agreement !== undefined && (
+                          <div className="bg-orange-100 text-orange-800 px-3 py-2 rounded-lg text-xs font-semibold">
+                            <div className="flex items-center gap-2">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              </svg>
+                              Multimodal: {(anomaly.multimodal_agreement * 100).toFixed(0)}%
                             </div>
                           </div>
                         )}

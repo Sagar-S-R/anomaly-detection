@@ -107,6 +107,7 @@ def process_scene_tier2(video_path):
 
 # Existing code...
 def process_scene_frame(image_array):
+    """Process single frame for scene anomaly detection with consistent thresholds"""
     image = Image.fromarray(image_array)
     # Comprehensive text prompts including aggressive behaviors
     texts = [
@@ -128,12 +129,11 @@ def process_scene_frame(image_array):
     normal_prob = max(probs[0], probs[1], probs[2])  # Max of normal activities
     anomaly_prob = max(probs[3], probs[4], probs[5], probs[6])  # Max of anomaly activities
     
-    # Return the anomaly probability if it exceeds normal probability by a very small margin
-    # Much more sensitive threshold to catch subtle visual anomalies
-    result = anomaly_prob.item() if anomaly_prob > normal_prob * 0.8 else 0.0  # Very sensitive: anomaly just needs to be 80% of normal
+    # Use consistent threshold with other functions - less sensitive
+    result = anomaly_prob.item() if anomaly_prob > normal_prob * 1.3 else 0.0  # Consistent with tier1/tier2
     
-    # Debug logging to see what's happening
-    print(f"🎬 Scene Debug: normal_prob={normal_prob:.3f}, anomaly_prob={anomaly_prob:.3f}, threshold=0.8x, result={result:.3f}")
+    # Structured debug logging
+    print(f"🎬 Scene Analysis: normal={normal_prob:.3f}, anomaly={anomaly_prob:.3f}, threshold=1.3x, result={result:.3f}")
     
     return result
 

@@ -49,17 +49,78 @@ function App() {
           setCurrentVideoFile(data.video_file);
         }
 
-        // Handle anomaly detection
+        // Handle Tier 2 analysis results
+        if (data.type === 'tier2_analysis') {
+          console.log('� Received Tier 2 Analysis:', data);
+          
+          if (data.error) {
+            setCurrentDetails(`❌ AI Analysis Failed: ${data.error}`);
+          } else {
+            const threatLevel = data.threat_severity_index || 0.5;
+            const threatPercent = (threatLevel * 100).toFixed(0);
+            const severity = threatLevel > 0.7 ? 'HIGH' : threatLevel > 0.4 ? 'MEDIUM' : 'LOW';
+            
+            setCurrentDetails(`✅ AI Analysis Complete: ${data.reasoning_summary || 'Analysis complete'} [Threat: ${severity} ${threatPercent}%]`);
+          }
+          
+          // Update the latest anomaly with tier2 analysis
+          setAnomalies(prev => {
+            const updated = [...prev];
+            
+            // Try multiple matching strategies
+            let matchingIndex = -1;
+            
+            // 1. First try exact frame_id match
+            if (data.frame_id) {
+              matchingIndex = updated.findIndex(anomaly => anomaly.frame_id === data.frame_id);
+            }
+            
+            // 2. Find the most recent anomaly without Tier 2 analysis
+            if (matchingIndex === -1) {
+              // Look from newest to oldest for anomaly without tier2_analysis
+              for (let i = updated.length - 1; i >= 0; i--) {
+                if (!updated[i].tier2_analysis) {
+                  matchingIndex = i;
+                  break;
+                }
+              }
+            }
+            
+            // 3. Last resort: use most recent anomaly
+            if (matchingIndex === -1 && updated.length > 0) {
+              matchingIndex = updated.length - 1;
+            }
+            
+            if (matchingIndex !== -1) {
+              const matchingAnomaly = updated[matchingIndex];
+              matchingAnomaly.tier2_analysis = data;
+              matchingAnomaly.reasoning_summary = data.reasoning_summary;
+              matchingAnomaly.threat_severity_index = data.threat_severity_index;
+              matchingAnomaly.visual_score = data.visual_score;
+              matchingAnomaly.audio_score = data.audio_score;
+              matchingAnomaly.text_alignment_score = data.text_alignment_score;
+              matchingAnomaly.multimodal_agreement = data.multimodal_agreement;
+              console.log('✅ Updated anomaly with Tier 2 analysis');
+            } else {
+              console.warn('⚠️ No matching anomaly found for Tier 2 analysis');
+            }
+            return updated;
+          });
+          return;
+        }
+
+        // Handle anomaly detection (Tier 1)
         if (data.status === 'Suspected Anomaly') {
           setAnomalyStatus('Anomaly Detected');
-          setCurrentDetails(data.details || 'Anomaly detected!');
+          setCurrentDetails(`🚨 ${data.details || 'Anomaly detected!'} - Triggering AI analysis...`);
           
           // Add to anomalies list if it has frame info
-          if (data.frame_count) {
+          if (data.frame_count || data.frame_id) {
             setAnomalies(prev => [...prev, {
               ...data,
               id: Date.now(), // Add unique ID
-              timestamp: data.timestamp || Date.now() / 1000
+              timestamp: data.timestamp || Date.now() / 1000,
+              tier2_analysis: null // Will be populated when Tier 2 completes
             }]);
           }
         } else {
