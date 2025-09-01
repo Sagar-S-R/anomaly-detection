@@ -10,23 +10,73 @@ import queue
 import os
 import time
 import json
+import base64
+import zipfile
+import tempfile
 from datetime import datetime
 from threading import Thread
 import threading
 import numpy as np
 import warnings
 from collections import deque
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import ConnectionFailure
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Suppress various warnings and set environment variables
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "ERROR"  # Reduce OpenCV FFmpeg warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# MongoDB Configuration
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DATABASE_NAME = "anomaly_detection"
+
+# Initialize MongoDB client
+mongodb_client = None
+database = None
+
+async def connect_to_mongodb():
+    """Connect to MongoDB database"""
+    global mongodb_client, database
+    try:
+        mongodb_client = AsyncIOMotorClient(MONGODB_URL)
+        # Test the connection
+        await mongodb_client.admin.command('ping')
+        database = mongodb_client[DATABASE_NAME]
+        print("✅ Connected to MongoDB successfully")
+        return True
+    except ConnectionFailure as e:
+        print(f"❌ Failed to connect to MongoDB: {e}")
+        print("⚠️  Running in local mode without database")
+        return False
+
+async def close_mongodb_connection():
+    """Close MongoDB connection"""
+    global mongodb_client
+    if mongodb_client:
+        mongodb_client.close()
+        print("📊 MongoDB connection closed")
+
 app = FastAPI()
 
 # Mount static files for anomaly frames and videos
 app.mount("/anomaly_frames", StaticFiles(directory="anomaly_frames"), name="anomaly_frames")
 app.mount("/recorded_videos", StaticFiles(directory="recorded_videos"), name="recorded_videos")
+
+# FastAPI Events
+@app.on_event("startup")
+async def startup_event():
+    """Initialize MongoDB connection on startup"""
+    await connect_to_mongodb()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close MongoDB connection on shutdown"""
+    await close_mongodb_connection()
 
 # Global storage for anomaly events with structured logging
 anomaly_events = []
@@ -114,6 +164,70 @@ def add_status_overlay(frame, status, details=""):
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
     
     return frame
+
+# MongoDB Helper Functions
+async def save_anomaly_to_db(anomaly_event):
+    """Save anomaly event to MongoDB"""
+    if not database:
+        return None
+    
+    try:
+        # Convert frame to base64 if exists
+        if "frame" in anomaly_event and anomaly_event["frame"] is not None:
+            frame = anomaly_event["frame"]
+            if isinstance(frame, np.ndarray):
+                _, buffer = cv2.imencode('.jpg', frame)
+                anomaly_event["frame_base64"] = base64.b64encode(buffer).decode('utf-8')
+                # Remove the numpy array to avoid serialization issues
+                del anomaly_event["frame"]
+        
+        # Insert into anomalies collection
+        result = await database.anomalies.insert_one(anomaly_event)
+        print(f"📊 Saved anomaly to MongoDB: {result.inserted_id}")
+        return result.inserted_id
+    except Exception as e:
+        print(f"❌ Error saving anomaly to MongoDB: {e}")
+        return None
+
+async def save_session_metadata(session_data):
+    """Save session metadata to MongoDB"""
+    if not database:
+        return None
+    
+    try:
+        result = await database.sessions.insert_one(session_data)
+        print(f"📊 Saved session metadata to MongoDB: {result.inserted_id}")
+        return result.inserted_id
+    except Exception as e:
+        print(f"❌ Error saving session to MongoDB: {e}")
+        return None
+
+async def get_anomalies_from_db(session_id=None, limit=100):
+    """Retrieve anomalies from MongoDB"""
+    if not database:
+        return []
+    
+    try:
+        query = {"session_id": session_id} if session_id else {}
+        cursor = database.anomalies.find(query).sort("timestamp", -1).limit(limit)
+        anomalies = await cursor.to_list(length=limit)
+        return anomalies
+    except Exception as e:
+        print(f"❌ Error retrieving anomalies from MongoDB: {e}")
+        return []
+
+async def get_all_sessions():
+    """Get all session metadata"""
+    if not database:
+        return []
+    
+    try:
+        cursor = database.sessions.find().sort("start_time", -1)
+        sessions = await cursor.to_list(length=None)
+        return sessions
+    except Exception as e:
+        print(f"❌ Error retrieving sessions from MongoDB: {e}")
+        return []
 
 def generate_video_stream():
     """Generate video stream with real-time status overlay"""
@@ -255,6 +369,107 @@ def print_performance_stats():
         print(f"🎬 Video: {fps_processed:.1f} FPS | 🎤 Audio: {audio_rate:.1f} chunks/s")
         print(f"🚨 T1: {performance_stats['tier1_anomalies_detected']} anomalies | 🔬 T2: {performance_stats['tier2_analyses_completed']}/{performance_stats['tier2_analyses_triggered']} analyses")
 
+# MongoDB API Endpoints
+@app.get("/api/anomalies")
+async def get_anomalies(session_id: str = None, limit: int = 100):
+    """Get anomalies from database"""
+    anomalies = await get_anomalies_from_db(session_id, limit)
+    return {"anomalies": anomalies, "count": len(anomalies)}
+
+@app.get("/api/sessions")
+async def get_sessions():
+    """Get all sessions"""
+    sessions = await get_all_sessions()
+    return {"sessions": sessions, "count": len(sessions)}
+
+@app.get("/api/download_session/{session_id}")
+async def download_session_data(session_id: str):
+    """Download all session data as a zip file"""
+    try:
+        # Get session anomalies
+        anomalies = await get_anomalies_from_db(session_id)
+        
+        if not anomalies:
+            raise HTTPException(status_code=404, detail="No data found for this session")
+        
+        # Create temporary zip file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+            zip_path = tmp_file.name
+        
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            # Add anomaly metadata as JSON
+            metadata = {
+                "session_id": session_id,
+                "total_anomalies": len(anomalies),
+                "export_time": datetime.now().isoformat(),
+                "anomalies": []
+            }
+            
+            # Create folders in zip
+            frames_folder = "frames/"
+            
+            for i, anomaly in enumerate(anomalies):
+                # Add frame image if available
+                if "frame_base64" in anomaly:
+                    try:
+                        frame_data = base64.b64decode(anomaly["frame_base64"])
+                        frame_filename = f"{frames_folder}anomaly_{i+1}_{anomaly.get('timestamp', 'unknown')}.jpg"
+                        zip_file.writestr(frame_filename, frame_data)
+                        
+                        # Add frame reference to metadata
+                        anomaly_meta = anomaly.copy()
+                        del anomaly_meta["frame_base64"]  # Remove base64 data from metadata
+                        anomaly_meta["frame_file"] = frame_filename
+                        metadata["anomalies"].append(anomaly_meta)
+                    except Exception as e:
+                        print(f"Error processing frame {i}: {e}")
+                        metadata["anomalies"].append(anomaly)
+                else:
+                    metadata["anomalies"].append(anomaly)
+            
+            # Add metadata JSON
+            zip_file.writestr("session_metadata.json", json.dumps(metadata, indent=2))
+            
+            # Add summary report
+            summary = f"""Anomaly Detection Session Report
+Session ID: {session_id}
+Total Anomalies Detected: {len(anomalies)}
+Export Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Anomaly Summary:
+""" + "\n".join([f"- {i+1}. {a.get('timestamp', 'Unknown time')}: {a.get('details', 'No details')}" 
+                 for i, a in enumerate(anomalies)])
+            
+            zip_file.writestr("README.txt", summary)
+        
+        # Return zip file
+        def cleanup():
+            try:
+                os.unlink(zip_path)
+            except:
+                pass
+        
+        return FileResponse(
+            zip_path,
+            media_type='application/zip',
+            filename=f'anomaly_session_{session_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip',
+            background=cleanup
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating download: {str(e)}")
+
+@app.get("/api/stats")
+async def get_system_stats():
+    """Get current system statistics"""
+    return {
+        "mongodb_connected": database is not None,
+        "performance_stats": performance_stats,
+        "current_status": current_status,
+        "total_stored_anomalies": await database.anomalies.count_documents({}) if database else 0,
+        "total_sessions": await database.sessions.count_documents({}) if database else 0
+    }
+
 @app.websocket("/stream_video")
 async def stream_video(websocket: WebSocket):
     await websocket.accept()
@@ -292,7 +507,18 @@ async def stream_video(websocket: WebSocket):
     
     # Setup video recording
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_id = f"live_session_{timestamp}"
     video_filename = f"recorded_videos/session_{timestamp}.mp4"
+    
+    # Save session metadata to MongoDB
+    session_metadata = {
+        "session_id": session_id,
+        "session_type": "live_camera",
+        "start_time": datetime.now().isoformat(),
+        "video_file": video_filename,
+        "status": "active"
+    }
+    await save_session_metadata(session_metadata)
     
     try:
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
@@ -389,9 +615,11 @@ async def stream_video(websocket: WebSocket):
                         anomaly_event = {
                             "frame_id": frame_id,
                             "timestamp": timestamp,
+                            "session_id": session_id,
                             "end_time": timestamp,  # Will be updated if incident continues
                             "duration": 0.0,  # Will be calculated
                             "frame_count": 1,  # Will be incremented if incident continues
+                            "frame": frame,  # Will be converted to base64 in MongoDB save
                             "frame_file": anomaly_frame_filename,
                             "video_file": video_filename,
                             "details": details,
@@ -402,6 +630,9 @@ async def stream_video(websocket: WebSocket):
                         }
                         anomaly_events.append(anomaly_event)
                         current_anomaly_event = anomaly_event  # Track current incident
+                        
+                        # Save to MongoDB (async)
+                        await save_anomaly_to_db(anomaly_event.copy())
                         
                         # TRIGGER TIER 2 ANALYSIS (synchronous but optimized)
                         performance_stats["tier2_analyses_triggered"] += 1
@@ -933,7 +1164,6 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
             
             if status == "Suspected Anomaly":
                 # Same anomaly processing logic as live stream
-                global last_anomaly_time, current_anomaly_event
                 time_since_last = timestamp - last_anomaly_time
                 
                 if time_since_last < anomaly_cooldown_period:
@@ -1151,7 +1381,6 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
             
             if status == "Suspected Anomaly":
                 # Same anomaly processing logic as live stream
-                global last_anomaly_time, current_anomaly_event
                 time_since_last = timestamp - last_anomaly_time
                 
                 if time_since_last < anomaly_cooldown_period:
