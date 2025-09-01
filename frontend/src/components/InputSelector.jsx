@@ -144,92 +144,96 @@ const InputSelector = ({
         </div>
       )}
 
-      {/* CCTV Configuration Modal */}
+            {/* CCTV Configuration Modal */}
       {showCCTVForm && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-          <div className="cyber-panel p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="cyber-title text-2xl">CONNECT TO CCTV</h3>
-              <button
-                onClick={() => setShowCCTVForm(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg border border-red-400/40 text-red-400 hover:bg-red-500/20 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <form onSubmit={handleCCTVSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
-                  IP Address *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="192.168.1.100"
-                  value={cctvForm.ip}
-                  onChange={(e) => setCctvForm({...cctvForm, ip: e.target.value})}
-                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
-                  Port
-                </label>
-                <input
-                  type="number"
-                  placeholder="554"
-                  value={cctvForm.port}
-                  onChange={(e) => setCctvForm({...cctvForm, port: parseInt(e.target.value) || 554})}
-                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
-                  Username (optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="admin"
-                  value={cctvForm.username}
-                  onChange={(e) => setCctvForm({...cctvForm, username: e.target.value})}
-                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
-                  Password (optional)
-                </label>
-                <input
-                  type="password"
-                  placeholder="password"
-                  value={cctvForm.password}
-                  onChange={(e) => setCctvForm({...cctvForm, password: e.target.value})}
-                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
-                />
-              </div>
-              
-              <div className="flex gap-4 pt-6">
+        <div className="fixed inset-0 bg-black/80 z-50 backdrop-blur-sm overflow-y-auto">
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="cyber-panel p-8 w-full max-w-md relative my-8 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="cyber-title text-2xl">CONNECT TO CCTV</h3>
                 <button
-                  type="button"
                   onClick={() => setShowCCTVForm(false)}
-                  className="flex-1 py-3 px-6 bg-gray-600/40 border border-gray-500/40 text-gray-400 rounded-xl font-mono font-bold tracking-wider uppercase hover:bg-gray-600/60 hover:border-gray-400/60 transition-all duration-300"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-red-400/40 text-red-400 hover:bg-red-500/20 transition-colors"
                 >
-                  CANCEL
-                </button>
-                <button
-                  type="submit"
-                  className="cyber-btn-primary flex-1 py-3 px-6 rounded-xl font-mono font-bold tracking-wider uppercase"
-                >
-                  CONNECT
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
-            </form>
+              
+              <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
+                <form onSubmit={handleCCTVSubmit} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
+                    IP Address *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="192.168.1.100"
+                    value={cctvForm.ip}
+                    onChange={(e) => setCctvForm({...cctvForm, ip: e.target.value})}
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
+                    Port
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="554"
+                    value={cctvForm.port}
+                    onChange={(e) => setCctvForm({...cctvForm, port: parseInt(e.target.value) || 554})}
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
+                    Username (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="admin"
+                    value={cctvForm.username}
+                    onChange={(e) => setCctvForm({...cctvForm, username: e.target.value})}
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
+                    Password (optional)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="password"
+                    value={cctvForm.password}
+                    onChange={(e) => setCctvForm({...cctvForm, password: e.target.value})}
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
+                  />
+                </div>
+                
+                  <div className="flex gap-4 pt-6">
+                    <button
+                      type="button"
+                      onClick={() => setShowCCTVForm(false)}
+                      className="flex-1 py-3 px-6 bg-gray-600/40 border border-gray-500/40 text-gray-400 rounded-xl font-mono font-bold tracking-wider uppercase hover:bg-gray-600/60 hover:border-gray-400/60 transition-all duration-300"
+                    >
+                      CANCEL
+                    </button>
+                    <button
+                      type="submit"
+                      className="cyber-btn-primary flex-1 py-3 px-6 rounded-xl font-mono font-bold tracking-wider uppercase"
+                    >
+                      CONNECT
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       )}

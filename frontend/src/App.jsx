@@ -40,6 +40,7 @@ function App() {
   // Input method management
   const [inputMode, setInputMode] = useState('none'); // 'none', 'live', 'cctv', 'upload'
   const [cctvConfig, setCctvConfig] = useState({ ip: '', port: 554, username: '', password: '' });
+  const [uploadedFile, setUploadedFile] = useState(null);
   
   // WebSocket management
   const [ws, setWs] = useState(null);
@@ -97,6 +98,7 @@ function App() {
     } else if (mode === 'upload' && config) {
       // For upload mode, config contains the file
       const file = config;
+      setUploadedFile(file);
       const formData = new FormData();
       formData.append('file', file);
       
@@ -120,6 +122,7 @@ function App() {
       } catch (error) {
         setCurrentDetails(`Upload failed: ${error.message}`);
         setInputMode('none');
+        setUploadedFile(null);
         setCurrentPage('input-selector');
       }
     }
@@ -133,7 +136,32 @@ function App() {
     }
     setIsConnected(false);
     setInputMode('none');
+    setUploadedFile(null);
+    setCctvConfig({ ip: '', port: 554, username: '', password: '' });
     setCurrentPage('input-selector');
+  };
+
+  // Handle connect button based on input mode
+  const handleConnect = () => {
+    if (inputMode === 'live') {
+      connectWebSocket('/stream_video');
+    } else if (inputMode === 'cctv' && cctvConfig) {
+      const query = new URLSearchParams({
+        ip: cctvConfig.ip,
+        port: cctvConfig.port.toString(),
+        username: cctvConfig.username || '',
+        password: cctvConfig.password || ''
+      }).toString();
+      connectWebSocket(`/connect_cctv?${query}`);
+    } else if (inputMode === 'upload' && uploadedFile) {
+      // For uploaded files, we should have the processing endpoint available
+      // This connects to already processed uploaded file
+      setCurrentDetails('Reconnecting to uploaded video processing...');
+      connectWebSocket('/stream_video'); // Default fallback, should be updated with correct endpoint
+    } else {
+      // Default to live camera if no specific mode
+      connectWebSocket('/stream_video');
+    }
   };
 
   // WebSocket connection handler
@@ -490,7 +518,7 @@ function App() {
         {/* Main Controls */}
         <VideoControls
           isConnected={isConnected}
-          onConnect={() => {}} // Handled by InputSelector now
+          onConnect={handleConnect}
           onDisconnect={handleDisconnect}
           onToggleStream={handleToggleStream}
           onToggleJson={handleToggleJson}
@@ -512,25 +540,65 @@ function App() {
             />
           </div>
 
-          {/* Side Panel */}
-          <div className="space-y-6">
-            {/* Database Manager Panel */}
-            <DatabaseManager />
+          {/* Side Panel - Fixed height with scroll */}
+          <div className="max-h-[80vh] overflow-y-auto space-y-6">
+            {/* Input Type Specific Info */}
+            {inputMode && (
+              <div className="cyber-panel p-4">
+                <h3 className="cyber-title text-lg mb-3">
+                  {inputMode === 'live' && '📹 LIVE CAMERA'}
+                  {inputMode === 'cctv' && '📡 CCTV STREAM'}
+                  {inputMode === 'upload' && '📁 VIDEO UPLOAD'}
+                </h3>
+                <div className="space-y-2 text-sm">
+                  {inputMode === 'live' && (
+                    <>
+                      <div className="text-gray-300 font-mono">• Real-time camera feed</div>
+                      <div className="text-gray-300 font-mono">• Instant anomaly detection</div>
+                      <div className="text-gray-300 font-mono">• Live pose analysis</div>
+                    </>
+                  )}
+                  {inputMode === 'cctv' && cctvConfig.ip && (
+                    <>
+                      <div className="text-cyan-400 font-mono">IP: {cctvConfig.ip}:{cctvConfig.port}</div>
+                      <div className="text-gray-300 font-mono">• Remote camera monitoring</div>
+                      <div className="text-gray-300 font-mono">• Network stream processing</div>
+                    </>
+                  )}
+                  {inputMode === 'upload' && (
+                    <>
+                      <div className="text-gray-300 font-mono">• Video file analysis</div>
+                      <div className="text-gray-300 font-mono">• Batch processing</div>
+                      <div className="text-gray-300 font-mono">• Historical review</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Database Manager Panel - Compact */}
+            <div className="max-h-96">
+              <DatabaseManager />
+            </div>
             
             {/* JSON Output Panel */}
             {showJsonPanel && (
-              <JsonOutput jsonData={jsonData} />
+              <div className="max-h-80">
+                <JsonOutput jsonData={jsonData} />
+              </div>
             )}
             
-            {/* Video Playback Controls */}
-            <VideoPlayback
-              currentVideoFile={currentVideoFile}
-              onLoadLatest={handleLoadLatestVideo}
-              onJumpToAnomaly={() => {
-                const lastAnomaly = anomalies[anomalies.length - 1];
-                return handleJumpToAnomaly(lastAnomaly);
-              }}
-            />
+            {/* Video Playback Controls - Compact */}
+            <div className="max-h-64">
+              <VideoPlayback
+                currentVideoFile={currentVideoFile}
+                onLoadLatest={handleLoadLatestVideo}
+                onJumpToAnomaly={() => {
+                  const lastAnomaly = anomalies[anomalies.length - 1];
+                  return handleJumpToAnomaly(lastAnomaly);
+                }}
+              />
+            </div>
           </div>
         </div>
 

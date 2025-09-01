@@ -54,18 +54,29 @@ const VideoControls = ({
               </div>
             )}
             
-            <button
-              onClick={onDisconnect}
-              disabled={!isConnected}
-              className={`
-                cyber-btn w-full ${!isConnected 
-                  ? 'opacity-50 cursor-not-allowed border-gray-600 text-gray-500' 
-                  : 'cyber-btn-red'
-                }
-              `}
-            >
-              {!isConnected ? 'DISCONNECTED' : 'STOP MONITORING'}
-            </button>
+            {!isConnected && (
+              <button
+                onClick={onConnect}
+                className="cyber-btn-primary w-full"
+              >
+                {inputMode === 'live' && 'START LIVE CAMERA'}
+                {inputMode === 'cctv' && 'CONNECT TO CCTV'}
+                {inputMode === 'upload' && 'START PROCESSING'}
+                {!inputMode && 'START MONITORING'}
+              </button>
+            )}
+            
+            {isConnected && (
+              <button
+                onClick={onDisconnect}
+                className="cyber-btn cyber-btn-red w-full"
+              >
+                {inputMode === 'live' && 'STOP CAMERA'}
+                {inputMode === 'cctv' && 'DISCONNECT CCTV'}
+                {inputMode === 'upload' && 'STOP PROCESSING'}
+                {!inputMode && 'STOP MONITORING'}
+              </button>
+            )}
           </div>
         </div>
 
