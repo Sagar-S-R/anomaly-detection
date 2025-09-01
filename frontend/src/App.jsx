@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Login from './components/Login';
+import Register from './components/Register';
 import Welcome from './components/Welcome';
 import LiveFeed from './components/LiveFeed';
 import AnomalyList from './components/AnomalyList';
@@ -13,7 +14,7 @@ import './index.css';
 function App() {
   // Authentication state
   const [user, setUser] = useState(null);
-  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'welcome', 'input-selector', 'monitoring'
+  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'register', 'welcome', 'input-selector', 'monitoring'
   
   // Debug/Demo mode - set to true to skip login
   const DEMO_MODE = false; // Change to true to skip authentication
@@ -24,7 +25,7 @@ function App() {
       setUser({ username: 'demo_user', timestamp: new Date() });
       setCurrentPage('input-selector');
     }
-  }, [user]);
+  }, [DEMO_MODE, user]);
   
   // Main state management
   const [isConnected, setIsConnected] = useState(false);
@@ -47,6 +48,19 @@ function App() {
   const handleLogin = (userData) => {
     setUser(userData);
     setCurrentPage('welcome');
+  };
+
+  const handleRegister = (userData) => {
+    // After successful registration, show login page
+    setCurrentPage('login');
+  };
+
+  const handleGoToRegister = () => {
+    setCurrentPage('register');
+  };
+
+  const handleBackToLogin = () => {
+    setCurrentPage('login');
   };
 
   const handleLogout = () => {
@@ -88,7 +102,7 @@ function App() {
       
       try {
         setCurrentDetails('Uploading video...');
-        const uploadResponse = await fetch('/upload_video', {
+        const uploadResponse = await fetch('http://localhost:8000/upload_video', {
           method: 'POST',
           body: formData
         });
@@ -308,7 +322,7 @@ function App() {
   const handleDownloadData = async () => {
     try {
       setCurrentDetails('Preparing download...');
-      const response = await fetch('/download-session-data');
+      const response = await fetch('http://localhost:8000/download-session-data');
       
       if (!response.ok) {
         throw new Error('Download failed');
@@ -332,7 +346,11 @@ function App() {
 
   // Render based on current page
   if (currentPage === 'login') {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} onGoToRegister={handleGoToRegister} />;
+  }
+
+  if (currentPage === 'register') {
+    return <Register onRegister={handleRegister} onBackToLogin={handleBackToLogin} />;
   }
 
   if (currentPage === 'welcome') {

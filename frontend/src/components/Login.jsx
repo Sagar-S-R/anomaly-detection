@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const Login = ({ onLogin }) => {
+const Login = ({ onLogin, onGoToRegister }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -11,18 +11,36 @@ const Login = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    // Simple validation - you can enhance this later
-    if (username.length < 3 || password.length < 6) {
-      setError('Username must be at least 3 characters and password at least 6 characters');
-      setIsLoading(false);
-      return;
-    }
+    try {
+      const response = await fetch('http://localhost:8000/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
 
-    // Simulate login process
-    setTimeout(() => {
-      onLogin({ username, timestamp: new Date() });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Login failed');
+      }
+
+      if (data.success) {
+        onLogin({ 
+          username: data.user.username, 
+          session_id: data.user.session_id,
+          role: data.user.role,
+          timestamp: new Date() 
+        });
+      } else {
+        setError('Invalid credentials');
+      }
+    } catch (error) {
+      setError(error.message || 'Login failed. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -133,6 +151,21 @@ const Login = ({ onLogin }) => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   QUICK DEMO MODE
+                </div>
+              </button>
+            </div>
+
+            {/* Register Button */}
+            <div className="mt-4">
+              <button
+                onClick={onGoToRegister}
+                className="w-full py-3 px-6 bg-green-500/20 border border-green-400/40 text-green-400 rounded-xl font-mono font-bold tracking-wider uppercase transition-all duration-300 hover:bg-green-500/30 hover:border-green-400/60"
+              >
+                <div className="flex items-center justify-center gap-3">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  CREATE NEW ACCOUNT
                 </div>
               </button>
             </div>

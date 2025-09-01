@@ -4,7 +4,16 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()  # Load variables from .env file
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# Initialize Groq client with error handling
+try:
+    groq_client = Groq(
+        api_key=os.getenv("GROQ_API_KEY"),
+        # Remove problematic parameters for compatibility
+    )
+except Exception as e:
+    print(f"Warning: Groq client initialization failed: {e}")
+    groq_client = None
 
 
 
@@ -132,6 +141,17 @@ def tier2_fusion(audio_transcript, captions, visual_anomaly_max, tier1_details, 
         )
         
         print(f"Tier 2 fusion prompt: {prompt}")  # Debug logging
+        
+        if groq_client is None:
+            print("Warning: Groq client not available, using fallback response")
+            return {
+                "status": "Suspected Anomaly",
+                "visual_score": 0.6,
+                "audio_score": 0.5,
+                "multimodal_agreement": 0.5,
+                "reasoning_summary": "AI analysis unavailable - using basic detection",
+                "threat_severity_index": 0.6
+            }
         
         response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],

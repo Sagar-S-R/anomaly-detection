@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from tier1.tier1_pipeline import run_tier1_continuous
 from tier2.tier2_pipeline import run_tier2_continuous
 from utils.audio_processing import AudioStream
@@ -39,19 +40,24 @@ DATABASE_NAME = "anomaly_detection"
 mongodb_client = None
 database = None
 
+# Memory storage for when MongoDB is not available
+memory_users = {}  # Dictionary to store users when DB is unavailable
+
 async def connect_to_mongodb():
     """Connect to MongoDB database"""
     global mongodb_client, database
     try:
         mongodb_client = AsyncIOMotorClient(MONGODB_URL)
-        # Test the connection
-        await mongodb_client.admin.command('ping')
+        # Test the connection with a shorter timeout
+        await mongodb_client.admin.command('ping', serverSelectionTimeoutMS=5000)
         database = mongodb_client[DATABASE_NAME]
         print("✅ Connected to MongoDB successfully")
         return True
-    except ConnectionFailure as e:
-        print(f"❌ Failed to connect to MongoDB: {e}")
-        print("⚠️  Running in local mode without database")
+    except Exception as e:
+        print(f"⚠️  MongoDB not available: {e}")
+        print("📝 Running in local-only mode (no database storage)")
+        mongodb_client = None
+        database = None
         return False
 
 async def close_mongodb_connection():
@@ -62,6 +68,15 @@ async def close_mongodb_connection():
         print("📊 MongoDB connection closed")
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount static files for anomaly frames and videos
 app.mount("/anomaly_frames", StaticFiles(directory="anomaly_frames"), name="anomaly_frames")
@@ -370,6 +385,188 @@ def print_performance_stats():
         print(f"🚨 T1: {performance_stats['tier1_anomalies_detected']} anomalies | 🔬 T2: {performance_stats['tier2_analyses_completed']}/{performance_stats['tier2_analyses_triggered']} analyses")
 
 # MongoDB API Endpoints
+@app.post("/api/register")
+async def register_user(request: dict):
+    """User registration endpoint"""
+    username = request.get('username', '').strip()
+    password = request.get('password', '').strip()
+    email = request.get('email', '').strip()
+    full_name = request.get('full_name', '').strip()
+    
+    # Validation
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    if '@' not in email or '.' not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format")
+    
+    if len(full_name) < 2:
+        raise HTTPException(status_code=400, detail="Full name must be at least 2 characters")
+    
+    # Check if user already exists (in memory first, then DB)
+    existing_users = ['admin', 'demo_user', 'security']  # Default users
+    
+    if database:
+        try:
+            # Check if username already exists in database
+            existing_user = await database.users.find_one({"username": username})
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Username already exists")
+            
+            # Check if email already exists
+            existing_email = await database.users.find_one({"email": email})
+            if existing_email:
+                raise HTTPException(status_code=400, detail="Email already registered")
+        except Exception as e:
+            print(f"Database check error: {e}")
+    else:
+        # Check memory storage when database is not available
+        if username in memory_users:
+            raise HTTPException(status_code=400, detail="Username already exists")
+        
+        # Check if email already exists in memory
+        for stored_user in memory_users.values():
+            if stored_user.get("email") == email:
+                raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Check against hardcoded users
+    if username in existing_users:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Create new user
+    new_user = {
+        "username": username,
+        "password": password,  # In production, hash this!
+        "email": email,
+        "full_name": full_name,
+        "role": "operator",
+        "created_at": datetime.now().isoformat(),
+        "status": "active"
+    }
+    
+    # Save to MongoDB if available
+    if database:
+        try:
+            result = await database.users.insert_one(new_user)
+            user_id = str(result.inserted_id)
+            print(f"✅ User registered successfully: {username} (ID: {user_id})")
+        except Exception as e:
+            print(f"❌ Error saving user to database: {e}")
+            raise HTTPException(status_code=500, detail="Failed to save user")
+    else:
+        # Store in memory when database is not available
+        memory_users[username] = new_user
+        print(f"⚠️  User registered in memory only: {username}")
+    
+    return {
+        "success": True,
+        "message": "User registered successfully",
+        "user": {
+            "username": username,
+            "email": email,
+            "full_name": full_name,
+            "role": "operator"
+        }
+    }
+
+@app.post("/api/login")
+async def login(request: dict):
+    """User authentication endpoint"""
+    username = request.get('username', '').strip()
+    password = request.get('password', '').strip()
+    
+    # Simple validation
+    if len(username) < 3 or len(password) < 6:
+        raise HTTPException(status_code=400, detail="Invalid username or password length")
+    
+    user_found = False
+    user_role = "operator"
+    user_email = None
+    user_full_name = None
+    
+    # Check demo/default credentials first
+    default_users = {
+        'admin': 'password123',
+        'demo_user': 'demo123',
+        'security': 'secure456'
+    }
+    
+    if username in default_users and default_users[username] == password:
+        user_found = True
+        user_role = "admin" if username == "admin" else "operator"
+    
+    # Check database users if not found in defaults
+    if not user_found and database:
+        try:
+            db_user = await database.users.find_one({"username": username})
+            if db_user and db_user.get("password") == password:
+                user_found = True
+                user_role = db_user.get("role", "operator")
+                user_email = db_user.get("email")
+                user_full_name = db_user.get("full_name")
+        except Exception as e:
+            print(f"Database login check error: {e}")
+    
+    # Check memory users if not found in defaults and database is not available
+    if not user_found and not database:
+        if username in memory_users:
+            memory_user = memory_users[username]
+            if memory_user.get("password") == password:
+                user_found = True
+                user_role = memory_user.get("role", "operator")
+                user_email = memory_user.get("email")
+                user_full_name = memory_user.get("full_name")
+                print(f"✅ Memory user login successful: {username}")
+    
+    if user_found:
+        # Create user session
+        user_data = {
+            "username": username,
+            "login_time": datetime.now().isoformat(),
+            "session_id": f"session_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "role": user_role
+        }
+        
+        # Save user session to MongoDB if available
+        if database:
+            try:
+                await database.user_sessions.insert_one(user_data)
+            except Exception as e:
+                print(f"Warning: Could not save user session to DB: {e}")
+        
+        return {
+            "success": True,
+            "user": {
+                "username": username,
+                "session_id": user_data["session_id"],
+                "role": user_role,
+                "email": user_email,
+                "full_name": user_full_name
+            },
+            "message": "Login successful"
+        }
+    else:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.post("/api/logout")
+async def logout(request: dict):
+    """User logout endpoint"""
+    session_id = request.get('session_id')
+    
+    if database and session_id:
+        try:
+            await database.user_sessions.update_one(
+                {"session_id": session_id},
+                {"$set": {"logout_time": datetime.now().isoformat()}}
+            )
+        except Exception as e:
+            print(f"Warning: Could not update logout time: {e}")
+    
+    return {"success": True, "message": "Logout successful"}
+
 @app.get("/api/anomalies")
 async def get_anomalies(session_id: str = None, limit: int = 100):
     """Get anomalies from database"""
