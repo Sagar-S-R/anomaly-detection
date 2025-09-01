@@ -7,6 +7,7 @@ import VideoPlayback from './components/VideoPlayback';
 import JsonOutput from './components/JsonOutput';
 import VideoControls from './components/VideoControls';
 import InputSelector from './components/InputSelector';
+import DatabaseManager from './components/DatabaseManager';
 import './index.css';
 
 function App() {
@@ -495,6 +496,9 @@ function App() {
 
           {/* Side Panel */}
           <div className="space-y-6">
+            {/* Database Manager Panel */}
+            <DatabaseManager />
+            
             {/* JSON Output Panel */}
             {showJsonPanel && (
               <JsonOutput jsonData={jsonData} />
