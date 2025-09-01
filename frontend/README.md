@@ -1,179 +1,265 @@
-# Anomaly Detection Frontend
+# Anomaly Detection System
 
-A modern React-based dashboard for real-time anomaly detection monitoring.
+A comprehensive multi-modal anomaly detection system with real-time video analysis, audio processing, and AI-powered threat assessment. Built with FastAPI backend and React frontend.
 
-## Features
+## 🚀 Features
 
-### 🎥 Live Video Monitoring
-- Real-time MJPEG video stream from backend
-- Anomaly status indicators with color-coded alerts
-- Auto-refresh to prevent stale streams
-- **WebRTC Ready**: Architecture designed for easy WebRTC upgrade
+### 🎥 Multi-Input Source Support
+- **Live Camera Monitoring**: Real-time webcam analysis with OpenCV
+- **CCTV Stream Integration**: Connect to IP cameras and RTSP streams
+- **Video Upload Analysis**: Process pre-recorded video files
+- **Session-Based Processing**: Isolated processing sessions for each input source
 
-### 🚨 Real-time Anomaly Detection
-- WebSocket connection for live status updates
-- Visual anomaly indicators with threat severity levels
-- Collapsible JSON data panel for detailed information
-- Automatic anomaly logging and storage
+### 🧠 Advanced AI Pipeline
+- **Tier 1 Analysis**: Scene analysis, pose detection, and basic anomaly detection
+- **Tier 2 Analysis**: Multi-modal fusion with audio transcription and AI reasoning
+- **Real-time Processing**: Concurrent video, audio, and fusion workers
+- **Threat Severity Scoring**: Intelligent risk assessment with multimodal agreement
 
-### 📹 Video Playback
-- Load and play recorded sessions
-- Jump to specific timestamps
-- Quick navigation to anomaly events
-- Full video controls
+### � Comprehensive Dashboard
+- **User Authentication**: Secure login/registration system
+- **Real-time Monitoring**: Live status updates via WebSocket
+- **Anomaly History**: Detailed anomaly tracking with thumbnails
+- **Performance Metrics**: System health and processing statistics
+- **Database Integration**: MongoDB for persistent anomaly storage
 
-### 📊 Anomaly Management
-- Comprehensive anomaly list with thumbnails
-- Severity-based color coding (red/orange/green)
-- Detailed anomaly information and AI analysis
-- Sortable by time or severity
+### 🎛️ Input Source Management
+- **Input Selector**: Choose between Live Camera, CCTV, or Video Upload
+- **CCTV Configuration**: Easy setup for IP cameras with authentication
+- **Session Management**: Clean thread lifecycle management
+- **Resource Cleanup**: Automatic camera release and thread termination
 
-### 🎛️ System Controls
-- Start/Stop monitoring (WebSocket management)
-- Toggle video stream display
-- Show/Hide JSON output panel
-- Refresh anomaly data
+### 🔧 Technical Features
+- **WebSocket Communication**: Real-time bidirectional data flow
+- **MJPEG Streaming**: Low-latency video streaming
+- **Audio Processing**: Real-time speech-to-text with Whisper AI
+- **Pose Detection**: MediaPipe-powered human pose analysis
+- **Fusion Logic**: Intelligent combination of video and audio analysis
 
-## Architecture
+## 🏗️ Architecture
 
-### Component Structure
+### Backend (FastAPI)
 ```
-src/
-├── App.jsx                 # Main application & state management
+backend/
+├── app.py                 # Main FastAPI application
+├── routes/
+│   └── user_data.py       # User authentication endpoints
+├── tier1/
+│   └── tier1_pipeline.py  # Scene & pose analysis
+├── tier2/
+│   └── tier2_pipeline.py  # AI-powered multimodal fusion
+├── utils/
+│   ├── audio_processing.py # Audio capture & transcription
+│   ├── pose_processing.py  # Pose detection utilities
+│   ├── scene_processing.py # Scene analysis
+│   └── fusion_logic.py     # Multimodal fusion
+├── anomaly_frames/        # Stored anomaly screenshots
+├── recorded_videos/       # Video recordings
+├── uploaded_videos/       # User-uploaded videos
+└── temp_audio/           # Temporary audio chunks
+```
+
+### Frontend (React)
+```
+frontend/src/
+├── App.jsx                # Main application & routing
 ├── components/
-│   ├── LiveFeed.jsx        # Live video stream & status
-│   ├── AnomalyList.jsx     # Anomaly history & management
-│   ├── VideoPlayback.jsx   # Video player controls
-│   ├── JsonOutput.jsx      # Real-time data display
-│   └── VideoControls.jsx   # System control panel
-├── index.css               # Tailwind & custom styles
-└── index.js                # React app entry point
+│   ├── LiveFeed.jsx       # Live video stream display
+│   ├── AnomalyList.jsx    # Anomaly history management
+│   ├── VideoPlayback.jsx  # Video player with controls
+│   ├── JsonOutput.jsx     # Real-time data visualization
+│   ├── VideoControls.jsx  # System control panel
+│   └── DatabaseManager.jsx # Database status monitoring
+├── pages/
+│   ├── Login.jsx          # User authentication
+│   ├── Register.jsx       # User registration
+│   ├── UserDashboard.jsx  # Main dashboard
+│   ├── InputSelector.jsx  # Input source selection
+│   ├── LiveCameraMonitoring.jsx # Live camera interface
+│   ├── CCTVMonitoring.jsx # CCTV stream interface
+│   ├── VideoUploadMonitoring.jsx # Video upload interface
+│   └── Welcome.jsx        # Welcome screen
+├── index.css              # Tailwind CSS & custom styles
+└── index.js               # React app entry point
 ```
 
-### State Management
-- **React Hooks**: `useState` and `useEffect` for component state
-- **WebSocket Management**: Centralized in App.jsx
-- **Auto-refresh**: 5-second intervals for anomaly data, 30-second video refresh
-- **Responsive Design**: Tailwind CSS with mobile-first approach
+## 🛠️ Technology Stack
 
-## Installation & Setup
+### Backend
+- **FastAPI**: High-performance async web framework
+- **OpenCV**: Computer vision and video processing
+- **MediaPipe**: Pose detection and landmark tracking
+- **OpenAI Whisper**: Speech-to-text transcription
+- **Groq API**: AI-powered threat analysis
+- **MongoDB**: Document database for anomaly storage
+- **WebSocket**: Real-time bidirectional communication
+
+### Frontend
+- **React 18**: Modern component-based UI framework
+- **Tailwind CSS**: Utility-first CSS framework
+- **WebSocket**: Real-time data updates
+- **Responsive Design**: Mobile-first approach
+
+## 📋 Installation & Setup
 
 ### Prerequisites
-- Node.js 16+ 
-- Backend anomaly detection server running on `localhost:8000`
+- Python 3.10+
+- Node.js 16+
+- MongoDB (optional, falls back to memory storage)
+- Webcam or IP camera for live monitoring
 
-### Install Dependencies
+### Backend Setup
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set up environment variables (optional)
+cp .env.example .env
+# Edit .env with your MongoDB URL and other settings
+
+# Start the server
+python -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
+```
+
+### Frontend Setup
 ```bash
 cd frontend
-npm install
-```
 
-### Development Mode
-```bash
+# Install dependencies
+npm install
+
+# Start development server
 npm start
 ```
-Runs on `http://localhost:3000` with proxy to backend on `localhost:8000`
 
-### Production Build
+### Access the Application
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+## 🎯 Usage Guide
+
+### 1. User Registration/Login
+- Register a new account or login with existing credentials
+- Access the main dashboard with system overview
+
+### 2. Input Source Selection
+- Choose from three input sources:
+  - **Live Camera**: Real-time webcam monitoring
+  - **CCTV Stream**: Connect to IP cameras
+  - **Video Upload**: Analyze pre-recorded videos
+
+### 3. Live Monitoring
+- Start monitoring to begin real-time analysis
+- View live video stream with anomaly overlays
+- Monitor system status and performance metrics
+- Review detected anomalies in real-time
+
+### 4. CCTV Configuration
+- Enter IP camera details (IP address, port, credentials)
+- Test connection before starting monitoring
+- Save frequently used camera configurations
+
+### 5. Video Upload Analysis
+- Upload video files for offline analysis
+- Monitor processing progress via WebSocket
+- Review detected anomalies with timestamps
+- Jump to specific anomaly locations in video
+
+## 🔧 Configuration
+
+### Environment Variables
 ```bash
-npm run build
+# .env file
+MONGODB_URL=mongodb://localhost:27017
+DATABASE_NAME=anomaly_detection
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
-## WebRTC Migration Path
+### CCTV Stream Formats
+- **RTSP**: `rtsp://username:password@ip:port/stream`
+- **HTTP**: `http://ip:port/video`
+- **Authentication**: Username/password support for secured cameras
 
-The current implementation uses MJPEG streams but is architected for easy WebRTC upgrade:
+### Performance Tuning
+- Adjust video resolution in backend configuration
+- Modify WebSocket message frequency
+- Configure anomaly detection sensitivity
+- Set audio chunk processing intervals
 
-### Current Implementation (MJPEG)
-```jsx
-// In LiveFeed.jsx
-<img
-  src={`/video_stream?t=${videoKey}`}
-  alt="Live Video Stream"
-  className="video-stream-classes"
-/>
-```
+## 📊 API Endpoints
 
-### Future WebRTC Implementation
-```jsx
-// Replace <img> with:
-<video
-  ref={videoRef}
-  autoPlay
-  muted
-  className="video-stream-classes"
-/>
+### Authentication
+- `POST /register` - User registration
+- `POST /login` - User authentication
+- `GET /profile` - Get user profile
 
-// Add WebRTC connection logic:
-useEffect(() => {
-  const setupWebRTC = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({video: true});
-    videoRef.current.srcObject = stream;
-  };
-  setupWebRTC();
-}, []);
-```
+### Monitoring
+- `WebSocket /stream_video` - Live video monitoring
+- `WebSocket /process_uploaded_video/{filename}` - Video upload processing
+- `GET /video_stream` - MJPEG video stream
+- `GET /anomaly_events` - Get anomaly history
 
-### Migration Checklist
-- [ ] Replace `<img>` with `<video>` element in `LiveFeed.jsx`
-- [ ] Add WebRTC connection logic
-- [ ] Update video refresh mechanism
-- [ ] Maintain existing CSS classes and anomaly border logic
-- [ ] Test responsive layout with video element
+### Data Management
+- `GET /api/stats` - System statistics
+- `GET /api/anomalies` - List all anomalies
+- `DELETE /api/anomalies/{id}` - Delete anomaly
+- `GET /api/performance` - Performance metrics
 
-## Configuration
+## 🚨 Error Handling
 
-### Backend Integration
-- WebSocket: `ws://localhost:8000/stream_video`
-- Video Stream: `http://localhost:8000/video_stream`
-- Anomaly API: `http://localhost:8000/anomaly_events`
+### Common Issues
+- **WebSocket Connection Failed**: Check backend server status
+- **Camera Not Accessible**: Verify camera permissions and connection
+- **Audio Processing Errors**: Ensure microphone permissions
+- **MongoDB Connection Failed**: Falls back to memory storage
 
-### Customization
-- **Colors**: Modify `tailwind.config.js` for custom anomaly colors
-- **Refresh Intervals**: Adjust in `App.jsx` (lines 45-50)
-- **Video Quality**: Configure in backend video stream endpoint
+### Troubleshooting
+- Check browser console for frontend errors
+- Review backend logs for server-side issues
+- Verify network connectivity for WebSocket connections
+- Ensure all dependencies are properly installed
 
-## Responsive Design
-
-### Breakpoints
-- **Mobile**: Single column layout, stacked components
-- **Tablet**: Two-column grid for main content
-- **Desktop**: Three-column layout with sidebar panels
-
-### Performance
-- Conditional rendering for hidden panels
-- Optimized re-renders with React hooks
-- Custom scrollbars for better UX
-- Smooth animations with Tailwind transitions
-
-## Development Notes
-
-### Component Communication
-- Props drilling for simple state sharing
-- Event handlers passed down from App.jsx
-- Callback functions for child-to-parent communication
-
-### Error Handling
-- WebSocket connection error recovery
-- Video stream fallback displays
-- Graceful API failure handling
-
-### Browser Compatibility
-- Modern browsers with WebSocket support
-- ES6+ features (requires transpilation for older browsers)
-- CSS Grid and Flexbox layouts
-
-## Future Enhancements
+## 🔮 Future Enhancements
 
 ### Planned Features
-- [ ] WebRTC video streaming
-- [ ] Real-time alerts/notifications
-- [ ] Anomaly export functionality
-- [ ] Multi-camera support
-- [ ] Historical analytics dashboard
-- [ ] User authentication
+- [ ] WebRTC video streaming for lower latency
+- [ ] Multi-camera simultaneous monitoring
+- [ ] Advanced analytics dashboard
+- [ ] Mobile app companion
+- [ ] Cloud deployment support
+- [ ] Custom anomaly detection models
+- [ ] Integration with security systems
+- [ ] Automated alert notifications
 
-### Performance Optimizations
-- [ ] Virtual scrolling for large anomaly lists
-- [ ] Image lazy loading
-- [ ] WebSocket message throttling
-- [ ] Service worker for offline capability
+### Performance Improvements
+- [ ] GPU acceleration for video processing
+- [ ] Distributed processing for multiple cameras
+- [ ] Optimized AI model inference
+- [ ] Advanced caching mechanisms
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- OpenCV for computer vision capabilities
+- MediaPipe for pose detection
+- OpenAI Whisper for speech recognition
+- FastAPI for the robust backend framework
+- React for the modern frontend experience

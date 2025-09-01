@@ -17,6 +17,7 @@ import tempfile
 from datetime import datetime
 from threading import Thread
 import threading
+import uuid
 
 # Global variables for camera management and thread control
 camera_in_use = False
@@ -925,7 +926,6 @@ async def stream_video(websocket: WebSocket):
     await websocket.accept()
     
     # Create a unique session
-    import uuid
     session_id = str(uuid.uuid4())
     session_stop_event = threading.Event()
     
@@ -1066,8 +1066,20 @@ async def stream_video(websocket: WebSocket):
     fusion_thread.start()
     session_threads.append(fusion_thread)
     
-    # Update session with threads
-    processing_sessions[session_id]['threads'] = session_threads
+    # Update session with threads (with error handling)
+    try:
+        if session_id in processing_sessions:
+            processing_sessions[session_id]['threads'] = session_threads
+        else:
+            print(f"⚠️ Session {session_id} not found in processing_sessions, recreating...")
+            processing_sessions[session_id] = {
+                'username': current_username,
+                'stop_event': session_stop_event,
+                'threads': session_threads,
+                'type': 'live_stream'
+            }
+    except Exception as e:
+        print(f"❌ Error updating session threads: {e}")
     
     print(f"🚀 All workers started for session {session_id} - processing fused results")
     
@@ -1572,7 +1584,12 @@ def audio_capture_worker_session(audio_queue, audio_stream, session_stop_event):
             audio_chunk_path = audio_stream.get_chunk()
             
             if audio_chunk_path:
-                performance_stats["audio_chunks_captured"] += 1
+                try:
+                    performance_stats["audio_chunks_captured"] += 1
+                except KeyError:
+                    print("❌ Session audio worker error: 'audio_chunks_captured'")
+                    continue
+                    
                 chunk_count += 1
                 current_timestamp = time.time()
                 
