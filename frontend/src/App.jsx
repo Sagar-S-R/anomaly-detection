@@ -4,6 +4,7 @@ import AnomalyList from './components/AnomalyList';
 import VideoPlayback from './components/VideoPlayback';
 import JsonOutput from './components/JsonOutput';
 import VideoControls from './components/VideoControls';
+import InputSelector from './components/InputSelector';
 import './index.css';
 
 function App() {
@@ -17,21 +18,25 @@ function App() {
   const [showJsonPanel, setShowJsonPanel] = useState(false);
   const [showVideoStream, setShowVideoStream] = useState(true);
   
+  // Input method management
+  const [inputMode, setInputMode] = useState('none'); // 'none', 'live', 'cctv', 'upload'
+  const [cctvConfig, setCctvConfig] = useState({ ip: '', port: 554, username: '', password: '' });
+  
   // WebSocket management
   const [ws, setWs] = useState(null);
 
   // WebSocket connection handler
-  const connectWebSocket = useCallback(() => {
+  const connectWebSocket = useCallback((endpoint = '/stream_video') => {
     if (ws) {
       ws.close();
     }
 
-    const newWs = new WebSocket('ws://localhost:8000/stream_video');
+    const newWs = new WebSocket(`ws://localhost:8000${endpoint}`);
     
     newWs.onopen = () => {
       setIsConnected(true);
       setCurrentDetails('Connected - Monitoring for anomalies...');
-      console.log('WebSocket connected');
+      console.log(`WebSocket connected to ${endpoint}`);
     };
 
     newWs.onmessage = (event) => {
@@ -197,6 +202,85 @@ function App() {
     return null;
   };
 
+  // Input method handlers
+  const handleLiveCamera = () => {
+    setInputMode('live');
+    connectWebSocket('/stream_video');
+  };
+
+  const handleCCTVConnect = (config) => {
+    setCctvConfig(config);
+    setInputMode('cctv');
+    const query = new URLSearchParams({
+      ip: config.ip,
+      port: config.port,
+      ...(config.username && { username: config.username }),
+      ...(config.password && { password: config.password })
+    });
+    connectWebSocket(`/connect_cctv?${query}`);
+  };
+
+  const handleVideoUpload = async (file) => {
+    setInputMode('upload');
+    
+    // Upload the file first
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      setCurrentDetails('Uploading video...');
+      const uploadResponse = await fetch('/upload_video', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Upload failed');
+      }
+      
+      const uploadResult = await uploadResponse.json();
+      setCurrentDetails('Video uploaded, starting analysis...');
+      
+      // Connect to processing WebSocket
+      connectWebSocket(`/process_uploaded_video/${uploadResult.filename}`);
+      
+    } catch (error) {
+      setCurrentDetails(`Upload failed: ${error.message}`);
+      setInputMode('none');
+    }
+  };
+
+  const handleDisconnect = () => {
+    disconnectWebSocket();
+    setInputMode('none');
+    setCurrentDetails('Disconnected');
+  };
+
+  const handleDownloadData = async () => {
+    try {
+      setCurrentDetails('Preparing download...');
+      const response = await fetch('/download-session-data');
+      
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `anomaly_data_${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setCurrentDetails('Download complete!');
+    } catch (error) {
+      setCurrentDetails(`Download failed: ${error.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="container mx-auto px-6 py-8 max-w-7xl">
@@ -220,16 +304,29 @@ function App() {
           </div>
         </div>
 
+        {/* Input Method Selection */}
+        <InputSelector
+          inputMode={inputMode}
+          isConnected={isConnected}
+          onLiveCamera={handleLiveCamera}
+          onCCTVConnect={handleCCTVConnect}
+          onVideoUpload={handleVideoUpload}
+          onDisconnect={handleDisconnect}
+          onDownloadData={handleDownloadData}
+          cctvConfig={cctvConfig}
+        />
+
         {/* Main Controls */}
         <VideoControls
           isConnected={isConnected}
-          onConnect={connectWebSocket}
-          onDisconnect={disconnectWebSocket}
+          onConnect={() => {}} // Handled by InputSelector now
+          onDisconnect={handleDisconnect}
           onToggleStream={handleToggleStream}
           onToggleJson={handleToggleJson}
           onRefreshAnomalies={refreshAnomalies}
           showVideoStream={showVideoStream}
           showJsonPanel={showJsonPanel}
+          inputMode={inputMode}
         />
 
         {/* Main Grid Layout */}

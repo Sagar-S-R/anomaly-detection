@@ -703,6 +703,75 @@ async def dashboard():
 async def root():
     return {"message": "Anomaly Detection API", "total_anomalies": len(anomaly_events), "dashboard": "/dashboard"}
 
+@app.get("/download-session-data")
+async def download_session_data():
+    """Create downloadable zip with all session data"""
+    import zipfile
+    import io
+    import base64
+    from datetime import datetime
+    
+    # Create in-memory zip file
+    zip_buffer = io.BytesIO()
+    
+    try:
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Create session summary
+            session_summary = {
+                "session_info": {
+                    "total_anomalies": len(anomaly_events),
+                    "generation_time": datetime.now().isoformat(),
+                    "performance_stats": performance_stats
+                },
+                "anomaly_events": anomaly_events
+            }
+            
+            # Add metadata
+            zip_file.writestr("metadata/session_summary.json", 
+                            json.dumps(session_summary, indent=2, default=str))
+            
+            # Add individual anomaly frames if they exist
+            for i, anomaly in enumerate(anomaly_events):
+                if "frame_file" in anomaly and os.path.exists(anomaly["frame_file"]):
+                    zip_file.write(anomaly["frame_file"], f"frames/anomaly_{i+1:03d}.jpg")
+                
+                # Add individual anomaly metadata
+                anomaly_meta = {
+                    "anomaly_id": i + 1,
+                    "timestamp": anomaly.get("timestamp"),
+                    "details": anomaly.get("details"),
+                    "tier1_result": anomaly.get("tier1_result"),
+                    "tier2_analysis": anomaly.get("tier2_analysis")
+                }
+                zip_file.writestr(f"metadata/anomaly_{i+1:03d}.json", 
+                                json.dumps(anomaly_meta, indent=2, default=str))
+            
+            # Add video files if they exist
+            if len(anomaly_events) > 0:
+                video_files = set()
+                for anomaly in anomaly_events:
+                    if "video_file" in anomaly and anomaly["video_file"]:
+                        video_files.add(anomaly["video_file"])
+                
+                for video_file in video_files:
+                    if os.path.exists(video_file):
+                        zip_file.write(video_file, f"videos/{os.path.basename(video_file)}")
+        
+        zip_buffer.seek(0)
+        
+        # Create response
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"anomaly_session_{timestamp}.zip"
+        
+        return StreamingResponse(
+            io.BytesIO(zip_buffer.getvalue()),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create download: {str(e)}")
+
 # VIDEO INPUT CONFIGURATION
 VIDEO_UPLOAD_DIR = "uploaded_videos"
 VIDEO_MIN_DURATION = 10  # seconds (configurable)

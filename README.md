@@ -399,8 +399,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/anomaly-detection/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/anomaly-detection/discussions)
+- **Issues**: [GitHub Issues](https://github.com/Samrudhp/anomaly-detection/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Samrudhp/anomaly-detection/discussions)
 - **Email**: your.email@example.com
 
 ---

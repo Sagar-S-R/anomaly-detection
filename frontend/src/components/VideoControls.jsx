@@ -8,7 +8,8 @@ const VideoControls = ({
   onToggleJson,
   onRefreshAnomalies,
   showVideoStream,
-  showJsonPanel
+  showJsonPanel,
+  inputMode
 }) => {
   return (
     <div className="card-modern p-8 mb-8 reveal-up">
@@ -34,33 +35,24 @@ const VideoControls = ({
             <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <h3 className="font-semibold text-slate-800 text-lg">Monitoring</h3>
+            <h3 className="font-semibold text-slate-800 text-lg">
+              {inputMode === 'live' && 'Live Camera'}
+              {inputMode === 'cctv' && 'CCTV Stream'}
+              {inputMode === 'upload' && 'Video Processing'}
+              {inputMode === 'none' && 'Monitoring'}
+            </h3>
           </div>
           <div className="space-y-3">
-            <button
-              onClick={onConnect}
-              disabled={isConnected}
-              className={`
-                btn-modern w-full px-6 py-4 rounded-xl font-semibold transition-all duration-300 shadow-professional
-                ${isConnected 
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-lg transform hover:-translate-y-0.5'
-                }
-              `}
-            >
-              <div className="flex items-center justify-center gap-3">
-                {isConnected ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                )}
-                {isConnected ? 'Connected' : 'Start Monitoring'}
+            {isConnected && (
+              <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-green-700 font-medium">
+                  {inputMode === 'live' && 'Camera Active'}
+                  {inputMode === 'cctv' && 'CCTV Connected'}
+                  {inputMode === 'upload' && 'Processing Video'}
+                </span>
               </div>
-            </button>
+            )}
             
             <button
               onClick={onDisconnect}
