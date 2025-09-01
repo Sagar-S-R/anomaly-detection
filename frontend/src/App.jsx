@@ -282,25 +282,42 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="container mx-auto px-6 py-8 max-w-7xl">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 relative">
+      {/* Cyber Grid Overlay */}
+      <div className="fixed inset-0 opacity-20 pointer-events-none z-0">
+        <div 
+          className="w-full h-full" 
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(0,255,255,0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0,255,255,0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: '50px 50px',
+            animation: 'gridMove 20s linear infinite'
+          }}
+        />
+      </div>
+
+      <div className="container mx-auto px-6 py-8 max-w-7xl relative z-10">
+        {/* Cyber Header */}
         <div className="mb-10">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-              A
+          <div className="flex items-center gap-6 mb-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-teal-400 rounded-xl flex items-center justify-center text-black text-2xl font-bold shadow-lg cyber-glow border border-cyan-400">
+              <span className="font-mono">⚡</span>
             </div>
             <div>
-              <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
-                Anomaly Detection System
+              <h1 className="cyber-title text-5xl mb-2">
+                ANOMALY DETECTION SYSTEM
               </h1>
-              <p className="text-slate-600 mt-1 text-lg">
-                Real-time AI-powered security monitoring and threat detection
+              <p className="cyber-subtitle text-xl text-cyan-300">
+                Advanced AI-Powered Security Monitoring Platform
               </p>
             </div>
           </div>
-          <div className="h-1 bg-blue-100 rounded-full w-full">
-            <div className="h-1 bg-blue-600 rounded-full w-1/4 transition-all duration-300"></div>
+          
+          {/* Cyber Progress Bar */}
+          <div className="cyber-progress h-2 w-full">
+            <div className="cyber-progress-fill" style={{ width: '75%' }}></div>
           </div>
         </div>
 

@@ -19,15 +19,15 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream 
   
   const statusConfig = {
     'Normal': {
-      bgColor: 'bg-green-100',
-      textColor: 'text-green-800',
-      borderColor: 'border-green-500',
+      bgColor: 'from-green-900/20 to-green-800/10',
+      textColor: 'text-green-400',
+      borderColor: 'border-green-400/40',
       icon: '✅'
     },
     'Anomaly Detected': {
-      bgColor: 'bg-red-100',
-      textColor: 'text-red-800', 
-      borderColor: 'border-red-500',
+      bgColor: 'from-red-900/20 to-red-800/10',
+      textColor: 'text-red-400', 
+      borderColor: 'border-red-400/40',
       icon: '🚨'
     }
   };
@@ -44,168 +44,166 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream 
   };
 
   return (
+    showVideoStream ? (
     <div className={`
-      card-modern p-8 transition-all duration-500 reveal-up
-      ${isAnomalyDetected ? 'anomaly-border bg-red-50/50' : 'normal-border bg-white'}
+      cyber-card p-8 transition-all duration-500 reveal-up
+      ${isAnomalyDetected ? 'border-red-400/60 cyber-glow' : 'border-cyan-400/30'}
     `}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
-            <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-16 h-16 bg-gradient-to-br from-cyan-400/20 to-teal-400/20 rounded-2xl flex items-center justify-center border border-cyan-400/30">
+            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Live Video Stream</h2>
-            <p className="text-slate-500 text-sm">Real-time monitoring feed</p>
+            <h2 className="cyber-title text-3xl">LIVE VIDEO STREAM</h2>
+            <p className="cyber-subtitle text-lg">Real-time monitoring feed</p>
           </div>
         </div>
         <div className={`
-          px-4 py-2 rounded-full text-sm font-semibold shadow-sm
-          ${isConnected ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}
+          px-6 py-3 rounded-xl text-sm font-mono font-bold tracking-wider uppercase border
+          ${isConnected ? 'bg-green-900/30 text-green-400 border-green-400/40' : 'bg-gray-900/30 text-gray-400 border-gray-500/40'}
         `}>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full status-indicator ${
-              isConnected ? 'bg-emerald-500' : 'bg-slate-400'
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${
+              isConnected ? 'bg-green-400 cyber-pulse' : 'bg-gray-500'
             }`}></div>
-            {isConnected ? 'Connected' : 'Disconnected'}
+            {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
           </div>
         </div>
       </div>
 
       {/* Status Display */}
       <div className={`
-        p-6 rounded-xl mb-6 border-l-4 shadow-professional
-        ${config.borderColor} ${config.bgColor} transition-all duration-500
-        ${isAnomalyDetected ? 'anomaly-pulse' : ''}
+        p-6 rounded-xl mb-8 border-l-4 bg-gradient-to-r transition-all duration-500
+        ${config.borderColor} ${config.bgColor}
+        ${isAnomalyDetected ? 'cyber-pulse' : ''}
       `}>
         <div className="flex items-center gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-            isAnomalyDetected ? 'bg-red-100' : 'bg-emerald-100'
+            isAnomalyDetected ? 'bg-red-500/20 border border-red-400/40' : 'bg-green-500/20 border border-green-400/40'
           }`}>
             {isAnomalyDetected ? (
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             ) : (
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             )}
           </div>
           <div className="flex-1">
-            <p className={`font-bold text-xl ${config.textColor} mb-1`}>
+            <p className={`font-bold text-xl ${config.textColor} mb-1 font-mono tracking-wide`}>
               {anomalyStatus}
             </p>
-            <p className={`text-sm ${config.textColor} opacity-80 leading-relaxed`}>
+            <p className={`text-sm ${config.textColor} opacity-80 leading-relaxed font-mono`}>
               {currentDetails}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Video Stream */}
-      {showVideoStream ? (
-        <div className="video-container bg-slate-900 rounded-2xl overflow-hidden relative shadow-professional-lg">
-          {videoError ? (
-            <div className="aspect-video flex items-center justify-center bg-slate-800 text-white">
-              <div className="text-center p-8">
-                <svg className="w-16 h-16 text-slate-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <p className="text-xl mb-2 font-medium">Video stream unavailable</p>
-                <p className="text-slate-400 mb-4">Connection to video source lost</p>
-                <button 
-                  onClick={() => {
-                    setVideoError(false);
-                    setVideoKey(Date.now());
+      {/* Video Container */}
+      <div className="grid lg:grid-cols-2 gap-8">
+        <div className="relative">
+          <div className="cyber-panel p-6">
+            <h3 className="cyber-subtitle text-xl mb-6 flex items-center gap-3">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full cyber-pulse"></div>
+              VIDEO STREAM
+            </h3>
+            <div className="video-container bg-black/90 rounded-xl overflow-hidden relative border border-cyan-400/20 cyber-grid-bg">
+              {videoError ? (
+                <div className="aspect-video flex items-center justify-center bg-gray-900/80">
+                  <div className="text-center p-8">
+                    <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-xl mb-2 font-bold font-mono text-red-400">VIDEO STREAM UNAVAILABLE</p>
+                    <p className="text-gray-400 mb-4 font-mono text-sm">Connection to video source lost</p>
+                    <button 
+                      onClick={() => {
+                        setVideoError(false);
+                        setVideoKey(Date.now());
+                      }}
+                      className="cyber-btn-primary px-6 py-3 rounded-xl font-mono font-bold tracking-wider uppercase"
+                    >
+                      RETRY CONNECTION
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <img
+                  key={videoKey}
+                  src={`/video_stream?t=${videoKey}`}
+                  alt="Live Video Stream"
+                  className="w-full h-auto max-h-96 object-contain transition-all duration-500 border-4 rounded-xl"
+                  onError={handleVideoError}
+                  onLoad={handleVideoLoad}
+                  style={{
+                    borderColor: isAnomalyDetected ? '#ef4444' : '#00d4aa',
+                    boxShadow: isAnomalyDetected ? '0 0 30px rgba(239, 68, 68, 0.5)' : '0 0 20px rgba(0, 212, 170, 0.3)'
                   }}
-                  className="btn-modern px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-300 font-medium shadow-lg"
-                >
-                  Retry Connection
-                </button>
-              </div>
-            </div>
-          ) : (
-            <img
-              key={videoKey}
-              src={`/video_stream?t=${videoKey}`}
-              alt="Live Video Stream"
-              className={`
-                w-full h-auto max-h-96 object-contain transition-all duration-500
-                ${isAnomalyDetected ? 'anomaly-border' : 'normal-border'}
-                border-4 rounded-xl
-              `}
-              onError={handleVideoError}
-              onLoad={handleVideoLoad}
-              style={{
-                // IMPORTANT: This is where MJPEG stream is implemented
-                // To replace with WebRTC later, replace this <img> element with:
-                // 1. A <video> element with ref for WebRTC stream attachment
-                // 2. WebRTC connection logic in useEffect
-                // 3. Keep the same CSS classes and container structure
-                // 4. The anomaly border logic can remain the same
-                
-                borderColor: isAnomalyDetected ? '#ef4444' : '#10b981',
-                boxShadow: isAnomalyDetected ? '0 0 30px rgba(239, 68, 68, 0.3)' : 'none'
-              }}
-            />
-          )}
-          
-          {/* Stream indicator */}
-          <div className="absolute top-4 right-4">
-            <div className={`
-              px-3 py-2 rounded-xl text-xs font-bold shadow-lg backdrop-blur-md
-              ${isConnected ? 'bg-red-500/90 text-white' : 'bg-slate-600/90 text-white'}
-            `}>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-white animate-pulse' : 'bg-slate-300'}`}></div>
-                {isConnected ? 'LIVE' : 'OFFLINE'}
+                />
+              )}
+              
+              {/* Stream indicator */}
+              <div className="absolute top-4 right-4">
+                <div className={`
+                  px-3 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase border backdrop-blur-md
+                  ${isConnected ? 'bg-red-500/20 text-red-400 border-red-400/40 cyber-pulse' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'}
+                `}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-red-400 animate-pulse' : 'bg-gray-400'}`}></div>
+                    {isConnected ? 'LIVE' : 'OFFLINE'}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      ) : (
-        <div className="aspect-video bg-slate-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 shadow-professional">
-          <div className="text-center text-slate-500 p-8">
-            <svg className="w-16 h-16 text-slate-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            <p className="text-xl font-medium mb-2">Video stream hidden</p>
-            <p className="text-sm text-slate-400">Use controls to show live stream</p>
-          </div>
-        </div>
-      )}
 
-      {/* Stream Info */}
-      <div className="mt-6 grid grid-cols-2 gap-4">
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div className="flex items-center gap-3 mb-2">
-            <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="font-semibold text-slate-700">Stream Type</p>
+        {/* Right Column - Analysis */}
+        <div className="space-y-6">
+          {/* Real-time Stats */}
+          <div className="cyber-panel p-6">
+            <h3 className="cyber-subtitle text-xl mb-6">SYSTEM METRICS</h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-300 font-mono text-sm">Frame Rate</span>
+                <span className="text-cyan-400 font-mono font-bold">30 FPS</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-300 font-mono text-sm">Resolution</span>
+                <span className="text-cyan-400 font-mono font-bold">1920x1080</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-300 font-mono text-sm">Latency</span>
+                <span className="text-green-400 font-mono font-bold">45ms</span>
+              </div>
+              <div className="h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent"></div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-300 font-mono text-sm">Quality</span>
+                <span className="text-teal-400 font-mono font-bold">Adaptive HD</span>
+              </div>
+            </div>
           </div>
-          <p className="text-slate-900 font-medium">MJPEG Stream</p>
-          <p className="text-xs text-slate-500 mt-1">
-            WebRTC upgrade available
-          </p>
         </div>
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div className="flex items-center gap-3 mb-2">
-            <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <p className="font-semibold text-slate-700">Resolution</p>
-          </div>
-          <p className="text-slate-900 font-medium">Auto</p>
-          <p className="text-xs text-slate-500 mt-1">
-            Adaptive quality
-          </p>
+      </div>
+    ) : (
+      <div className="aspect-video bg-gray-900/50 rounded-xl flex items-center justify-center border-2 border-dashed border-cyan-400/30 cyber-grid-bg">
+        <div className="text-center p-8">
+          <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <p className="text-xl font-bold mb-2 font-mono text-gray-300">VIDEO STREAM HIDDEN</p>
+          <p className="text-sm text-gray-400 font-mono">Use controls to show live stream</p>
         </div>
       </div>
     </div>
+    ) : null
   );
 };
 
