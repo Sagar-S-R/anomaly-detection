@@ -913,6 +913,8 @@ async def stream_video(websocket: WebSocket):
                 
     except WebSocketDisconnect:
         print("WebSocket client disconnected")
+    except asyncio.CancelledError:
+        print("WebSocket connection cancelled")
     except Exception as e:
         print(f"Unexpected error: {e}")
         try:
@@ -1463,9 +1465,16 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                 print(f"WebSocket send error: {e}")
                 break
                 
+    except WebSocketDisconnect:
+        print("WebSocket disconnected during video processing")
+    except asyncio.CancelledError:
+        print("Video processing WebSocket connection cancelled")
     except Exception as e:
         print(f"Video processing error: {e}")
-        await websocket.send_json({"error": str(e)})
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
     finally:
         video_cap.release()
         audio_stream.stop()
@@ -1674,9 +1683,16 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
                 print(f"CCTV WebSocket error: {e}")
                 break
                 
+    except WebSocketDisconnect:
+        print("WebSocket disconnected from CCTV")
+    except asyncio.CancelledError:
+        print("CCTV WebSocket connection cancelled")
     except Exception as e:
         print(f"CCTV processing error: {e}")
-        await websocket.send_json({"error": str(e)})
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
     finally:
         video_cap.release()
         print(f"🎥 CCTV session ended: {ip}:{port}")
