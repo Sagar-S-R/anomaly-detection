@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Login from './components/Login';
-import Register from './components/Register';
-import Welcome from './components/Welcome';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Welcome from './pages/Welcome';
 import LiveFeed from './components/LiveFeed';
 import AnomalyList from './components/AnomalyList';
-import VideoPlayback from './components/VideoPlayback';
 import JsonOutput from './components/JsonOutput';
 import VideoControls from './components/VideoControls';
-import InputSelector from './components/InputSelector';
+import InputSelector from './pages/InputSelector';
+import LiveCameraMonitoring from './pages/LiveCameraMonitoring';
+import CCTVMonitoring from './pages/CCTVMonitoring';
+import VideoPlayback from './components/VideoPlayback';
+import UserDashboard from './pages/UserDashboard';
 import DatabaseManager from './components/DatabaseManager';
+import VideoUploadMonitoring from './pages/VideoUploadMonitoring';
 import './index.css';
 
 function App() {
   // Authentication state
   const [user, setUser] = useState(null);
-  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'register', 'welcome', 'input-selector', 'monitoring'
+  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'register', 'welcome', 'dashboard', 'input-selector', 'live-monitoring', 'upload-monitoring', 'cctv-monitoring', 'monitoring'
   
   // Debug/Demo mode - set to true to skip login
   const DEMO_MODE = false; // Change to true to skip authentication
@@ -77,53 +81,60 @@ function App() {
   };
 
   const handleWelcomeContinue = () => {
-    setCurrentPage('input-selector');
+    setCurrentPage('dashboard');
   };
 
   const handleInputModeSelect = async (mode, config = null) => {
     setInputMode(mode);
-    setCurrentPage('monitoring');
     
+    // Route to specific monitoring pages instead of unified monitoring
     if (mode === 'live') {
+      setCurrentPage('live-monitoring');
       connectWebSocket('/stream_video');
-    } else if (mode === 'cctv' && config) {
-      setCctvConfig(config);
-      const query = new URLSearchParams({
-        ip: config.ip,
-        port: config.port,
-        ...(config.username && { username: config.username }),
-        ...(config.password && { password: config.password })
-      });
-      connectWebSocket(`/connect_cctv?${query}`);
-    } else if (mode === 'upload' && config) {
-      // For upload mode, config contains the file
-      const file = config;
-      setUploadedFile(file);
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      try {
-        setCurrentDetails('Uploading video...');
-        const uploadResponse = await fetch('http://localhost:8000/upload_video', {
-          method: 'POST',
-          body: formData
+    } else if (mode === 'cctv') {
+      setCurrentPage('cctv-monitoring');
+      if (config) {
+        setCctvConfig(config);
+        const query = new URLSearchParams({
+          ip: config.ip,
+          port: config.port,
+          ...(config.username && { username: config.username }),
+          ...(config.password && { password: config.password })
         });
+        connectWebSocket(`/connect_cctv?${query}`);
+      }
+    } else if (mode === 'upload') {
+      setCurrentPage('upload-monitoring');
+      if (config) {
+        // For upload mode, config contains the file
+        const file = config;
+        setUploadedFile(file);
+        const formData = new FormData();
+        formData.append('file', file);
         
-        if (!uploadResponse.ok) {
-          throw new Error('Upload failed');
+        try {
+          setCurrentDetails('Uploading video...');
+          const uploadResponse = await fetch('http://localhost:8000/upload_video', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!uploadResponse.ok) {
+            throw new Error('Upload failed');
+          }
+          
+          const uploadResult = await uploadResponse.json();
+          setCurrentDetails('Video uploaded, starting analysis...');
+          
+          // Connect to processing WebSocket
+          connectWebSocket(`/process_uploaded_video/${uploadResult.filename}`);
+          
+        } catch (error) {
+          setCurrentDetails(`Upload failed: ${error.message}`);
+          setInputMode('none');
+          setUploadedFile(null);
+          setCurrentPage('input-selector');
         }
-        
-        const uploadResult = await uploadResponse.json();
-        setCurrentDetails('Video uploaded, starting analysis...');
-        
-        // Connect to processing WebSocket
-        connectWebSocket(`/process_uploaded_video/${uploadResult.filename}`);
-        
-      } catch (error) {
-        setCurrentDetails(`Upload failed: ${error.message}`);
-        setInputMode('none');
-        setUploadedFile(null);
-        setCurrentPage('input-selector');
       }
     }
   };
@@ -170,12 +181,17 @@ function App() {
       ws.close();
     }
 
-    const newWs = new WebSocket(`ws://localhost:8000${endpoint}`);
+    // Add username to WebSocket connection
+    const username = user?.username || 'demo_user';
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const wsUrl = `ws://localhost:8000${endpoint}${separator}username=${encodeURIComponent(username)}`;
+    
+    const newWs = new WebSocket(wsUrl);
     
     newWs.onopen = () => {
       setIsConnected(true);
       setCurrentDetails('Connected - Monitoring for anomalies...');
-      console.log(`WebSocket connected to ${endpoint}`);
+      console.log(`WebSocket connected to ${endpoint} for user ${username}`);
     };
 
     newWs.onmessage = (event) => {
@@ -195,7 +211,7 @@ function App() {
 
         // Handle Tier 2 analysis results
         if (data.type === 'tier2_analysis') {
-          console.log('� Received Tier 2 Analysis:', data);
+          console.log('🔬 Received Tier 2 Analysis:', data);
           
           if (data.error) {
             setCurrentDetails(`❌ AI Analysis Failed: ${data.error}`);
@@ -253,21 +269,74 @@ function App() {
           return;
         }
 
-        // Handle anomaly detection (Tier 1)
+        // Handle real-time anomaly notifications from backend
+        if (data.type === 'new_anomaly') {
+          console.log('🚨 REAL-TIME ANOMALY RECEIVED:', data.data);
+          
+          const anomalyData = data.data;
+          setAnomalyStatus('Anomaly Detected');
+          setCurrentDetails(`🚨 ${anomalyData.details || 'New anomaly detected!'} - AI analysis in progress...`);
+          
+          // Add to anomalies list immediately for real-time display
+          setAnomalies(prev => {
+            // Check if this anomaly already exists to prevent duplicates
+            const exists = prev.some(anomaly => 
+              anomaly.id === anomalyData.id || 
+              (anomaly.frame_id === anomalyData.frame_id && 
+               Math.abs((anomaly.timestamp || 0) - (anomalyData.timestamp || 0)) < 2)
+            );
+            
+            if (!exists) {
+              const newAnomaly = {
+                ...anomalyData,
+                id: anomalyData.id || Date.now(),
+                receivedAt: Date.now(),
+                source: 'real_time',
+                status: 'new' // Mark for UI highlighting
+              };
+              console.log('✅ Added real-time anomaly to UI:', newAnomaly);
+              return [newAnomaly, ...prev]; // Add to beginning for immediate visibility
+            }
+            console.log('⚠️ Duplicate anomaly detected, skipping');
+            return prev;
+          });
+          return;
+        }
+
+        // Handle regular anomaly detection (Tier 1 - fallback for older format)
         if (data.status === 'Suspected Anomaly') {
+          console.log('🔍 Tier 1 anomaly detected (legacy format):', data);
+          
           setAnomalyStatus('Anomaly Detected');
           setCurrentDetails(`🚨 ${data.details || 'Anomaly detected!'} - Triggering AI analysis...`);
           
-          // Add to anomalies list if it has frame info
+          // Add to anomalies list if it has frame info and doesn't already exist
           if (data.frame_count || data.frame_id) {
-            setAnomalies(prev => [...prev, {
-              ...data,
-              id: Date.now(), // Add unique ID
-              timestamp: data.timestamp || Date.now() / 1000,
-              tier2_analysis: null // Will be populated when Tier 2 completes
-            }]);
+            setAnomalies(prev => {
+              // Check if this anomaly already exists (might be from real-time broadcast)
+              const exists = prev.some(anomaly => 
+                (anomaly.frame_id === data.frame_id && 
+                 Math.abs((anomaly.timestamp || 0) - (data.timestamp || Date.now() / 1000)) < 2) ||
+                (anomaly.id === data.id)
+              );
+              
+              if (!exists) {
+                const newAnomaly = {
+                  ...data,
+                  id: data.id || Date.now(),
+                  timestamp: data.timestamp || Date.now() / 1000,
+                  tier2_analysis: null,
+                  source: 'websocket_legacy',
+                  status: 'detecting'
+                };
+                console.log('✅ Added legacy anomaly to UI:', newAnomaly);
+                return [newAnomaly, ...prev];
+              }
+              console.log('⚠️ Legacy anomaly already exists, skipping');
+              return prev;
+            });
           }
-        } else {
+        } else if (data.status === 'Normal' || data.status === 'No Anomaly') {
           setAnomalyStatus('Normal');
           setCurrentDetails(data.details || 'Monitoring...');
         }
@@ -277,20 +346,31 @@ function App() {
       }
     };
 
-    newWs.onclose = () => {
+    newWs.onclose = (event) => {
       setIsConnected(false);
       setAnomalyStatus('Normal');
       setCurrentDetails('Disconnected from monitoring service');
-      console.log('WebSocket disconnected');
+      console.log('WebSocket disconnected:', event.code, event.reason);
+      
+      // Auto-reconnect after 3 seconds if not a normal closure
+      if (event.code !== 1000 && !event.wasClean) {
+        console.log('Attempting to reconnect in 3 seconds...');
+        setTimeout(() => {
+          if (!ws || ws.readyState === WebSocket.CLOSED) {
+            console.log('Reconnecting WebSocket...');
+            connectWebSocket(endpoint);
+          }
+        }, 3000);
+      }
     };
 
     newWs.onerror = (error) => {
-      setCurrentDetails('Connection error occurred');
+      setCurrentDetails('Connection error - Check camera access');
       console.error('WebSocket error:', error);
     };
 
     setWs(newWs);
-  }, [ws]);
+  }, [ws, user?.username]);
 
   // Disconnect WebSocket
   const disconnectWebSocket = useCallback(() => {
@@ -303,13 +383,14 @@ function App() {
   // Refresh anomalies from backend
   const refreshAnomalies = useCallback(async () => {
     try {
-      const response = await fetch('/anomaly_events');
+      const username = user?.username || 'demo_user';
+      const response = await fetch(`/anomaly_events?username=${encodeURIComponent(username)}`);
       const data = await response.json();
       setAnomalies(data.anomaly_events || []);
     } catch (error) {
       console.error('Error fetching anomalies:', error);
     }
-  }, []);
+  }, [user]);
 
   // Auto-refresh anomalies every 5 seconds when connected
   useEffect(() => {
@@ -321,6 +402,24 @@ function App() {
       if (interval) clearInterval(interval);
     };
   }, [isConnected, refreshAnomalies]);
+
+  // Auto-mark new anomalies as "seen" after 10 seconds
+  useEffect(() => {
+    const markAnomaliesAsSeen = () => {
+      setAnomalies(prev => {
+        const now = Date.now();
+        return prev.map(anomaly => {
+          if (anomaly.status === 'new' && anomaly.receivedAt && (now - anomaly.receivedAt > 10000)) {
+            return { ...anomaly, status: 'seen' };
+          }
+          return anomaly;
+        });
+      });
+    };
+
+    const interval = setInterval(markAnomaliesAsSeen, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Control handlers
   const handleToggleStream = () => setShowVideoStream(!showVideoStream);
@@ -350,7 +449,8 @@ function App() {
   const handleDownloadData = async () => {
     try {
       setCurrentDetails('Preparing download...');
-      const response = await fetch('http://localhost:8000/download-session-data');
+      const username = user?.username || 'demo_user';
+      const response = await fetch(`http://localhost:8000/download-session-data?username=${encodeURIComponent(username)}`);
       
       if (!response.ok) {
         throw new Error('Download failed');
@@ -387,6 +487,16 @@ function App() {
         user={user}
         onContinue={handleWelcomeContinue}
         onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (currentPage === 'dashboard') {
+    return (
+      <UserDashboard 
+        user={user}
+        onLogout={handleLogout}
+        onStartMonitoring={() => setCurrentPage('input-selector')}
       />
     );
   }
@@ -441,6 +551,73 @@ function App() {
           />
         </div>
       </div>
+    );
+  }
+
+  // Live Camera Monitoring Page
+  if (currentPage === 'live-monitoring') {
+    return (
+      <LiveCameraMonitoring
+        user={user}
+        onLogout={handleLogout}
+        onBackToSelector={handleBackToInputSelector}
+        onConnect={handleConnect}
+        ws={ws}
+        isConnected={isConnected}
+        anomalyStatus={anomalyStatus}
+        currentDetails={currentDetails}
+        anomalies={anomalies}
+        jsonData={jsonData}
+        showJsonPanel={showJsonPanel}
+        onToggleJson={handleToggleJson}
+        onDisconnect={handleDisconnect}
+        onDownloadData={handleDownloadData}
+      />
+    );
+  }
+
+  // Video Upload Monitoring Page
+  if (currentPage === 'upload-monitoring') {
+    return (
+      <VideoUploadMonitoring
+        user={user}
+        onLogout={handleLogout}
+        onBackToSelector={handleBackToInputSelector}
+        onVideoUpload={(file) => handleInputModeSelect('upload', file)}
+        ws={ws}
+        isConnected={isConnected}
+        anomalyStatus={anomalyStatus}
+        currentDetails={currentDetails}
+        anomalies={anomalies}
+        jsonData={jsonData}
+        showJsonPanel={showJsonPanel}
+        currentVideoFile={currentVideoFile}
+        onToggleJson={handleToggleJson}
+        onDisconnect={handleDisconnect}
+        onDownloadData={handleDownloadData}
+      />
+    );
+  }
+
+  // CCTV Monitoring Page
+  if (currentPage === 'cctv-monitoring') {
+    return (
+      <CCTVMonitoring
+        user={user}
+        onLogout={handleLogout}
+        onBackToSelector={handleBackToInputSelector}
+        onCCTVConnect={(config) => handleInputModeSelect('cctv', config)}
+        ws={ws}
+        isConnected={isConnected}
+        anomalyStatus={anomalyStatus}
+        currentDetails={currentDetails}
+        anomalies={anomalies}
+        jsonData={jsonData}
+        showJsonPanel={showJsonPanel}
+        onToggleJson={handleToggleJson}
+        onDisconnect={handleDisconnect}
+        onDownloadData={handleDownloadData}
+      />
     );
   }
 

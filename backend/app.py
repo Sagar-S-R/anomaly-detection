@@ -43,16 +43,59 @@ database = None
 # Memory storage for when MongoDB is not available
 memory_users = {}  # Dictionary to store users when DB is unavailable
 
+# Real-time WebSocket connections tracking
+active_websocket_connections = {}  # {username: websocket_connection}
+
+async def broadcast_anomaly_to_user(username: str, anomaly_data: dict):
+    """Broadcast new anomaly to user's active WebSocket connection"""
+    if username in active_websocket_connections:
+        try:
+            websocket = active_websocket_connections[username]
+            await websocket.send_text(json.dumps({
+                "type": "new_anomaly",
+                "data": anomaly_data,
+                "timestamp": time.time()
+            }))
+            print(f"📡 Broadcasted anomaly to user {username}")
+        except Exception as e:
+            print(f"❌ Failed to broadcast to {username}: {e}")
+            # Remove disconnected connection
+            if username in active_websocket_connections:
+                del active_websocket_connections[username]
+
 async def connect_to_mongodb():
     """Connect to MongoDB database"""
     global mongodb_client, database
     try:
-        mongodb_client = AsyncIOMotorClient(MONGODB_URL)
-        # Test the connection with a shorter timeout
-        await mongodb_client.admin.command('ping', serverSelectionTimeoutMS=5000)
+        print(f"🔗 Attempting to connect to MongoDB at: {MONGODB_URL}")
+        
+        # Create client with proper timeout settings
+        mongodb_client = AsyncIOMotorClient(
+            MONGODB_URL,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            maxPoolSize=50
+        )
+        
+        # Test the connection with a simple ping
+        await mongodb_client.admin.command('ping')
+        
+        # Set the database
         database = mongodb_client[DATABASE_NAME]
+        
+        # Test database access
+        await database.list_collection_names()
+        
         print("✅ Connected to MongoDB successfully")
+        print(f"📊 Database: {DATABASE_NAME}")
         return True
+        
+    except ConnectionFailure as e:
+        print(f"❌ MongoDB connection failed: {e}")
+        print("💡 Make sure MongoDB service is running")
+        mongodb_client = None
+        database = None
+        return False
     except Exception as e:
         print(f"⚠️  MongoDB not available: {e}")
         print("📝 Running in local-only mode (no database storage)")
@@ -82,6 +125,46 @@ app.add_middleware(
 app.mount("/anomaly_frames", StaticFiles(directory="anomaly_frames"), name="anomaly_frames")
 app.mount("/recorded_videos", StaticFiles(directory="recorded_videos"), name="recorded_videos")
 
+# Include user data routes
+from routes.user_data import router as user_data_router
+app.include_router(user_data_router)
+
+# MongoDB connection test endpoint
+@app.get("/api/test/mongodb")
+async def test_mongodb_connection():
+    """Test MongoDB connection status"""
+    if database is None:
+        return {
+            "status": "disconnected",
+            "message": "MongoDB not connected - running in memory mode",
+            "mongodb_url": MONGODB_URL,
+            "database_name": DATABASE_NAME
+        }
+    
+    try:
+        # Test database access
+        collections = await database.list_collection_names()
+        
+        # Test a simple operation
+        result = await database.test_collection.insert_one({"test": "connection", "timestamp": datetime.now().isoformat()})
+        await database.test_collection.delete_one({"_id": result.inserted_id})
+        
+        return {
+            "status": "connected",
+            "message": "MongoDB connection successful",
+            "mongodb_url": MONGODB_URL,
+            "database_name": DATABASE_NAME,
+            "collections": collections,
+            "test_operation": "success"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"MongoDB connection test failed: {str(e)}",
+            "mongodb_url": MONGODB_URL,
+            "database_name": DATABASE_NAME
+        }
+
 # FastAPI Events
 @app.on_event("startup")
 async def startup_event():
@@ -94,7 +177,73 @@ async def shutdown_event():
     await close_mongodb_connection()
 
 # Global storage for anomaly events with structured logging
-anomaly_events = []
+# Changed to user-based storage: {username: {live: [], upload: [], cctv: []}}
+user_anomaly_data = {}  # User-specific data storage
+
+def get_user_data(username):
+    """Get or create user data structure"""
+    if username not in user_anomaly_data:
+        user_anomaly_data[username] = {
+            'live': [],      # Live camera anomalies
+            'upload': [],    # Video upload anomalies  
+            'cctv': [],      # CCTV stream anomalies
+            'sessions': []   # Session metadata
+        }
+    return user_anomaly_data[username]
+
+def add_user_anomaly(username, anomaly_type, anomaly_data):
+    """Add anomaly to user's specific data type"""
+    user_data = get_user_data(username)
+    if anomaly_type in user_data:
+        # Clean anomaly data to ensure JSON serializability
+        clean_data = {
+            'id': anomaly_data.get('id', str(time.time())),
+            'frame_id': anomaly_data.get('frame_id', 0),
+            'timestamp': anomaly_data.get('timestamp', time.time()),
+            'session_time': anomaly_data.get('session_time', datetime.now().isoformat()),
+            'details': str(anomaly_data.get('details', '')),
+            'fusion_status': str(anomaly_data.get('fusion_status', '')),
+            'frame_count': int(anomaly_data.get('frame_count', 1)),
+            'duration': float(anomaly_data.get('duration', 0)),
+            'tier1_result': {
+                'confidence': float(anomaly_data.get('tier1_result', {}).get('confidence', 0)),
+                'scene_detected': bool(anomaly_data.get('tier1_result', {}).get('scene_detected', False)),
+                'pose_detected': bool(anomaly_data.get('tier1_result', {}).get('pose_detected', False)),
+                'audio_detected': bool(anomaly_data.get('tier1_result', {}).get('audio_detected', False)),
+                'audio_transcription': str(anomaly_data.get('tier1_result', {}).get('audio_transcription', '')),
+            },
+            'tier2_analysis': anomaly_data.get('tier2_analysis'),
+            'frame_file': str(anomaly_data.get('frame_file', '')) if anomaly_data.get('frame_file') else None,
+            'video_file': str(anomaly_data.get('video_file', '')) if anomaly_data.get('video_file') else None,
+            'anomaly_type': anomaly_type,
+            'created_at': time.time(),
+            'username': username
+        }
+        
+        user_data[anomaly_type].append(clean_data)
+        
+        # Keep only last 50 anomalies per type to prevent memory issues
+        if len(user_data[anomaly_type]) > 50:
+            user_data[anomaly_type] = user_data[anomaly_type][-50:]
+        
+        # Broadcast to user's active WebSocket connection in background
+        asyncio.create_task(broadcast_anomaly_to_user(username, clean_data))
+        
+        print(f"✅ Added anomaly for {username} ({anomaly_type}): {clean_data.get('details', '')}")
+        return True
+    return False
+
+def get_user_anomalies(username, anomaly_type=None):
+    """Get user's anomalies by type or all"""
+    user_data = get_user_data(username)
+    if anomaly_type and anomaly_type in user_data:
+        return user_data[anomaly_type]
+    else:
+        # Return all anomalies combined
+        all_anomalies = []
+        for atype in ['live', 'upload', 'cctv']:
+            all_anomalies.extend(user_data[atype])
+        return sorted(all_anomalies, key=lambda x: x.get('created_at', 0), reverse=True)
 
 # Global asynchronous queues for multimodal fusion
 video_queue = queue.Queue(maxsize=30)  # Store video embeddings + timestamps
@@ -181,12 +330,15 @@ def add_status_overlay(frame, status, details=""):
     return frame
 
 # MongoDB Helper Functions
-async def save_anomaly_to_db(anomaly_event):
-    """Save anomaly event to MongoDB"""
-    if not database:
+async def save_anomaly_to_db(anomaly_event, username="demo_user"):
+    """Save anomaly event to MongoDB with user association"""
+    if database is None:
         return None
     
     try:
+        # Add username to the anomaly event
+        anomaly_event["username"] = username
+        
         # Convert frame to base64 if exists
         if "frame" in anomaly_event and anomaly_event["frame"] is not None:
             frame = anomaly_event["frame"]
@@ -198,7 +350,7 @@ async def save_anomaly_to_db(anomaly_event):
         
         # Insert into anomalies collection
         result = await database.anomalies.insert_one(anomaly_event)
-        print(f"📊 Saved anomaly to MongoDB: {result.inserted_id}")
+        print(f"📊 Saved anomaly to MongoDB for user {username}: {result.inserted_id}")
         return result.inserted_id
     except Exception as e:
         print(f"❌ Error saving anomaly to MongoDB: {e}")
@@ -206,7 +358,7 @@ async def save_anomaly_to_db(anomaly_event):
 
 async def save_session_metadata(session_data):
     """Save session metadata to MongoDB"""
-    if not database:
+    if database is None:
         return None
     
     try:
@@ -219,7 +371,7 @@ async def save_session_metadata(session_data):
 
 async def get_anomalies_from_db(session_id=None, limit=100):
     """Retrieve anomalies from MongoDB"""
-    if not database:
+    if database is None:
         return []
     
     try:
@@ -233,7 +385,7 @@ async def get_anomalies_from_db(session_id=None, limit=100):
 
 async def get_all_sessions():
     """Get all session metadata"""
-    if not database:
+    if database is None:
         return []
     
     try:
@@ -409,7 +561,7 @@ async def register_user(request: dict):
     # Check if user already exists (in memory first, then DB)
     existing_users = ['admin', 'demo_user', 'security']  # Default users
     
-    if database:
+    if database is not None:
         try:
             # Check if username already exists in database
             existing_user = await database.users.find_one({"username": username})
@@ -448,7 +600,7 @@ async def register_user(request: dict):
     }
     
     # Save to MongoDB if available
-    if database:
+    if database is not None:
         try:
             result = await database.users.insert_one(new_user)
             user_id = str(result.inserted_id)
@@ -499,7 +651,7 @@ async def login(request: dict):
         user_role = "admin" if username == "admin" else "operator"
     
     # Check database users if not found in defaults
-    if not user_found and database:
+    if not user_found and database is not None:
         try:
             db_user = await database.users.find_one({"username": username})
             if db_user and db_user.get("password") == password:
@@ -511,7 +663,7 @@ async def login(request: dict):
             print(f"Database login check error: {e}")
     
     # Check memory users if not found in defaults and database is not available
-    if not user_found and not database:
+    if not user_found and database is None:
         if username in memory_users:
             memory_user = memory_users[username]
             if memory_user.get("password") == password:
@@ -531,7 +683,7 @@ async def login(request: dict):
         }
         
         # Save user session to MongoDB if available
-        if database:
+        if database is not None:
             try:
                 await database.user_sessions.insert_one(user_data)
             except Exception as e:
@@ -556,7 +708,7 @@ async def logout(request: dict):
     """User logout endpoint"""
     session_id = request.get('session_id')
     
-    if database and session_id:
+    if database is not None and session_id:
         try:
             await database.user_sessions.update_one(
                 {"session_id": session_id},
@@ -663,38 +815,75 @@ async def get_system_stats():
         "mongodb_connected": database is not None,
         "performance_stats": performance_stats,
         "current_status": current_status,
-        "total_stored_anomalies": await database.anomalies.count_documents({}) if database else 0,
-        "total_sessions": await database.sessions.count_documents({}) if database else 0
+        "total_stored_anomalies": await database.anomalies.count_documents({}) if database is not None else 0,
+        "total_sessions": await database.sessions.count_documents({}) if database is not None else 0
     }
 
 @app.websocket("/stream_video")
 async def stream_video(websocket: WebSocket):
     await websocket.accept()
     
+    # Get user authentication from WebSocket headers or query params
+    current_username = "demo_user"  # Default for now - should be from session/auth
+    
+    # Try to get username from query parameters
+    query_params = websocket.query_params
+    if "username" in query_params:
+        current_username = query_params["username"]
+    
+    print(f"🔌 WebSocket connected for user: {current_username}")
+    
+    # Register WebSocket connection for real-time updates
+    active_websocket_connections[current_username] = websocket
+    print(f"📡 Registered WebSocket for real-time anomaly updates: {current_username}")
+    
     # Try multiple times to open camera
     video_cap = None
     cv2.setLogLevel(0)
     
-    for attempt in range(3):
-        video_cap = cv2.VideoCapture(0)
-        video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        
-        if video_cap.isOpened():
-            ret, test_frame = video_cap.read()
-            if ret:
-                print(f"✅ Camera opened successfully on attempt {attempt + 1}")
-                break
+    # Check if camera is already in use by another WebSocket
+    active_cameras = getattr(app.state, 'active_cameras', set())
+    if 0 in active_cameras:
+        await websocket.send_json({"error": "Camera already in use by another session. Please wait and try again."})
+        return
+    
+    for attempt in range(5):  # Increased attempts
+        try:
+            video_cap = cv2.VideoCapture(0)
+            video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)   # Lower resolution for better performance
+            video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            video_cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            if video_cap.isOpened():
+                ret, test_frame = video_cap.read()
+                if ret and test_frame is not None:
+                    print(f"✅ Camera opened successfully on attempt {attempt + 1}")
+                    # Mark camera as active
+                    if not hasattr(app.state, 'active_cameras'):
+                        app.state.active_cameras = set()
+                    app.state.active_cameras.add(0)
+                    break
+                else:
+                    video_cap.release()
+                    video_cap = None
             else:
-                video_cap.release()
+                if video_cap:
+                    video_cap.release()
                 video_cap = None
-        else:
+        except Exception as e:
+            print(f"❌ Camera attempt {attempt + 1} failed: {e}")
+            if video_cap:
+                video_cap.release()
             video_cap = None
         
-        if attempt < 2:
-            await asyncio.sleep(1)
+        if attempt < 4:
+            await asyncio.sleep(2)  # Longer wait between attempts
     
     if video_cap is None or not video_cap.isOpened():
-        await websocket.send_json({"error": "Could not open video stream after multiple attempts"})
+        error_msg = "Camera unavailable. Please ensure:\n1. Camera is not in use by another application\n2. Camera drivers are installed\n3. Camera permissions are granted"
+        await websocket.send_json({"error": error_msg})
+        print("❌ Camera failed to open after all attempts")
         return
 
     # Get video properties
@@ -825,11 +1014,12 @@ async def stream_video(websocket: WebSocket):
                             "tier1_result": tier1_result,
                             "tier2_analysis": None  # Will be populated when Tier 2 completes
                         }
-                        anomaly_events.append(anomaly_event)
+                        # Add to user's live camera anomalies
+                        add_user_anomaly(current_username, 'live', anomaly_event)
                         current_anomaly_event = anomaly_event  # Track current incident
                         
                         # Save to MongoDB (async)
-                        await save_anomaly_to_db(anomaly_event.copy())
+                        await save_anomaly_to_db(anomaly_event.copy(), current_username)
                         
                         # TRIGGER TIER 2 ANALYSIS (synchronous but optimized)
                         performance_stats["tier2_analyses_triggered"] += 1
@@ -912,9 +1102,9 @@ async def stream_video(websocket: WebSocket):
                 continue
                 
     except WebSocketDisconnect:
-        print("WebSocket client disconnected")
+        print(f"WebSocket client disconnected: {current_username}")
     except asyncio.CancelledError:
-        print("WebSocket connection cancelled")
+        print(f"WebSocket connection cancelled: {current_username}")
     except Exception as e:
         print(f"Unexpected error: {e}")
         try:
@@ -924,9 +1114,22 @@ async def stream_video(websocket: WebSocket):
     finally:
         # Cleanup resources
         try:
-            video_cap.release()
-            video_writer.release()
-            audio_stream.stop()
+            # Unregister WebSocket connection
+            if current_username in active_websocket_connections:
+                del active_websocket_connections[current_username]
+                print(f"📡 Unregistered WebSocket for user: {current_username}")
+            
+            if video_cap:
+                video_cap.release()
+            if video_writer:
+                video_writer.release()
+            if 'audio_stream' in locals():
+                audio_stream.stop()
+            
+            # Remove camera from active list
+            if hasattr(app.state, 'active_cameras') and 0 in app.state.active_cameras:
+                app.state.active_cameras.remove(0)
+                
             print(f"📹 Video saved: {video_filename}")
             print(f"🚨 Final Tier 1 anomalies: {performance_stats['tier1_anomalies_detected']}")
             print(f"🔬 Final Tier 2 analyses: {performance_stats['tier2_analyses_completed']}")
@@ -1113,15 +1316,41 @@ def fusion_worker():
             time.sleep(0.1)
 
 @app.get("/anomaly_events")
-async def get_anomaly_events():
-    """Get all detected anomaly events"""
-    return {"anomaly_events": anomaly_events}
+async def get_anomaly_events(username: str = None, anomaly_type: str = None):
+    """Get user-specific anomaly events by type"""
+    try:
+        if not username:
+            return {"anomaly_events": [], "error": "Username required"}
+        
+        user_anomalies = get_user_anomalies(username, anomaly_type)
+        
+        # Filter out corrupted data
+        clean_anomalies = []
+        for anomaly in user_anomalies:
+            if isinstance(anomaly, dict) and all(isinstance(k, str) for k in anomaly.keys()):
+                clean_anomalies.append(anomaly)
+            else:
+                print(f"Skipping corrupted anomaly data: {type(anomaly)}")
+        
+        return {
+            "anomaly_events": clean_anomalies,
+            "username": username,
+            "anomaly_type": anomaly_type or "all",
+            "total_count": len(clean_anomalies)
+        }
+    except Exception as e:
+        print(f"Error in get_anomaly_events: {e}")
+        return {"anomaly_events": [], "error": str(e)}
 
 @app.get("/anomaly_events/{event_index}")
-async def get_anomaly_event(event_index: int):
-    """Get specific anomaly event by index"""
-    if 0 <= event_index < len(anomaly_events):
-        return anomaly_events[event_index]
+async def get_anomaly_event(event_index: int, username: str = None):
+    """Get specific anomaly event by index for user"""
+    if not username:
+        return {"error": "Username required"}
+    
+    user_anomalies = get_user_anomalies(username)
+    if 0 <= event_index < len(user_anomalies):
+        return user_anomalies[event_index]
     return {"error": "Event not found"}
 
 @app.get("/dashboard")
@@ -1131,15 +1360,33 @@ async def dashboard():
 
 @app.get("/")
 async def root():
-    return {"message": "Anomaly Detection API", "total_anomalies": len(anomaly_events), "dashboard": "/dashboard"}
+    return {"message": "Anomaly Detection API", "dashboard": "/dashboard"}
+
+@app.get("/user_stats/{username}")
+async def get_user_stats(username: str):
+    """Get user-specific statistics"""
+    user_data = get_user_data(username)
+    total_anomalies = sum(len(user_data[atype]) for atype in ['live', 'upload', 'cctv'])
+    
+    return {
+        "username": username,
+        "total_anomalies": total_anomalies,
+        "live_anomalies": len(user_data['live']),
+        "upload_anomalies": len(user_data['upload']),
+        "cctv_anomalies": len(user_data['cctv']),
+        "sessions": len(user_data['sessions'])
+    }
 
 @app.get("/download-session-data")
-async def download_session_data():
-    """Create downloadable zip with all session data"""
+async def download_session_data(username: str = "demo_user"):
+    """Create downloadable zip with all session data for specific user"""
     import zipfile
     import io
     import base64
     from datetime import datetime
+    
+    # Get user's anomalies
+    user_anomalies = get_user_anomalies(username)
     
     # Create in-memory zip file
     zip_buffer = io.BytesIO()
@@ -1149,11 +1396,12 @@ async def download_session_data():
             # Create session summary
             session_summary = {
                 "session_info": {
-                    "total_anomalies": len(anomaly_events),
+                    "username": username,
+                    "total_anomalies": len(user_anomalies),
                     "generation_time": datetime.now().isoformat(),
                     "performance_stats": performance_stats
                 },
-                "anomaly_events": anomaly_events
+                "anomaly_events": user_anomalies
             }
             
             # Add metadata
@@ -1161,7 +1409,7 @@ async def download_session_data():
                             json.dumps(session_summary, indent=2, default=str))
             
             # Add individual anomaly frames if they exist
-            for i, anomaly in enumerate(anomaly_events):
+            for i, anomaly in enumerate(user_anomalies):
                 if "frame_file" in anomaly and os.path.exists(anomaly["frame_file"]):
                     zip_file.write(anomaly["frame_file"], f"frames/anomaly_{i+1:03d}.jpg")
                 
@@ -1177,9 +1425,9 @@ async def download_session_data():
                                 json.dumps(anomaly_meta, indent=2, default=str))
             
             # Add video files if they exist
-            if len(anomaly_events) > 0:
+            if len(user_anomalies) > 0:
                 video_files = set()
-                for anomaly in anomaly_events:
+                for anomaly in user_anomalies:
                     if "video_file" in anomaly and anomaly["video_file"]:
                         video_files.add(anomaly["video_file"])
                 
@@ -1275,6 +1523,14 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
     """Process uploaded video through the same anomaly detection pipeline"""
     await websocket.accept()
     
+    # Get user authentication from WebSocket headers or query params
+    current_username = "demo_user"  # Default for now - should be from session/auth
+    
+    # Try to get username from query parameters
+    query_params = websocket.query_params
+    if "username" in query_params:
+        current_username = query_params["username"]
+    
     file_path = os.path.join(VIDEO_UPLOAD_DIR, filename)
     if not os.path.exists(file_path):
         await websocket.send_json({"error": "Video file not found"})
@@ -1288,8 +1544,10 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
     
     try:
         # Reset global state for new video processing session
-        global anomaly_events, performance_stats, last_anomaly_time, current_anomaly_event
-        anomaly_events = []
+        global performance_stats, last_anomaly_time, current_anomaly_event
+        # Reset user's upload data for new session
+        user_data = get_user_data(current_username)
+        user_data['upload'] = []
         current_anomaly_event = None
         last_anomaly_time = 0
         performance_stats = {
@@ -1344,7 +1602,8 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                 # Check if video processing is complete
                 if not video_thread.is_alive():
                     print("📹 Video processing completed")
-                    await websocket.send_json({"status": "Processing completed", "total_anomalies": len(anomaly_events)})
+                    user_anomalies = get_user_anomalies(current_username, 'upload')
+                    await websocket.send_json({"status": "Processing completed", "total_anomalies": len(user_anomalies)})
                     break
                 continue
             
@@ -1405,7 +1664,8 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                         "tier1_result": tier1_result,
                         "tier2_analysis": None
                     }
-                    anomaly_events.append(anomaly_event)
+                    # Add to user's upload video anomalies
+                    add_user_anomaly(current_username, 'upload', anomaly_event)
                     current_anomaly_event = anomaly_event
                     
                     # TRIGGER TIER 2 ANALYSIS
@@ -1485,6 +1745,14 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
     """Connect to CCTV camera via RTSP and process through the same anomaly detection pipeline"""
     await websocket.accept()
     
+    # Get user authentication from WebSocket headers or query params
+    current_username = "demo_user"  # Default for now - should be from session/auth
+    
+    # Try to get username from query parameters
+    query_params = websocket.query_params
+    if "username" in query_params:
+        current_username = query_params["username"]
+    
     # Construct RTSP URL
     if username and password:
         rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/stream"
@@ -1510,8 +1778,10 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
     
     try:
         # Reset global state for new CCTV session
-        global anomaly_events, performance_stats, last_anomaly_time, current_anomaly_event
-        anomaly_events = []
+        global performance_stats, last_anomaly_time, current_anomaly_event
+        # Reset user's CCTV data for new session
+        user_data = get_user_data(current_username)
+        user_data['cctv'] = []
         current_anomaly_event = None
         last_anomaly_time = 0
         performance_stats = {
@@ -1626,7 +1896,8 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
                         "tier1_result": tier1_result,
                         "tier2_analysis": None
                     }
-                    anomaly_events.append(anomaly_event)
+                    # Add to user's CCTV anomalies
+                    add_user_anomaly(current_username, 'cctv', anomaly_event)
                     current_anomaly_event = anomaly_event
                     
                     # TRIGGER TIER 2 ANALYSIS

@@ -20,7 +20,7 @@ const InputSelector = ({
 
   const handleCCTVSubmit = (e) => {
     e.preventDefault();
-    onCCTVConnect(cctvForm);
+    onCCTVConnect('cctv', cctvForm);
     setShowCCTVForm(false);
   };
 
@@ -68,7 +68,7 @@ const InputSelector = ({
                 Real-time monitoring using your device camera
               </p>
               <button
-                onClick={onLiveCamera}
+                onClick={() => onLiveCamera('live')}
                 className="cyber-btn cyber-btn-green w-full"
               >
                 START LIVE FEED
