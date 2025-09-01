@@ -40,6 +40,7 @@ function App() {
   const [currentVideoFile, setCurrentVideoFile] = useState(null);
   const [showJsonPanel, setShowJsonPanel] = useState(false);
   const [showVideoStream, setShowVideoStream] = useState(true);
+  const [videoFrame, setVideoFrame] = useState(null); // Store current video frame from WebSocket
   
   // Input method management
   const [inputMode, setInputMode] = useState('none'); // 'none', 'live', 'cctv', 'upload'
@@ -81,6 +82,14 @@ function App() {
   };
 
   const handleWelcomeContinue = () => {
+    // Ensure clean state when navigating to dashboard
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('🔌 Disconnecting WebSocket before going to dashboard');
+      disconnectWebSocket();
+    }
+    setInputMode('none');
+    setIsConnected(false);
+    setVideoFrame(null);
     setCurrentPage('dashboard');
   };
 
@@ -105,8 +114,9 @@ function App() {
       }
     } else if (mode === 'upload') {
       setCurrentPage('upload-monitoring');
-      if (config) {
-        // For upload mode, config contains the file
+      setInputMode('upload');
+      if (config && config instanceof File) {
+        // For upload mode with file, config contains the file
         const file = config;
         setUploadedFile(file);
         const formData = new FormData();
@@ -114,7 +124,7 @@ function App() {
         
         try {
           setCurrentDetails('Uploading video...');
-          const uploadResponse = await fetch('http://localhost:8000/upload_video', {
+          const uploadResponse = await fetch('http://127.0.0.1:8000/upload_video', {
             method: 'POST',
             body: formData
           });
@@ -135,6 +145,10 @@ function App() {
           setUploadedFile(null);
           setCurrentPage('input-selector');
         }
+      } else {
+        // Just navigate to upload monitoring page without file
+        setCurrentDetails('Select a video file to analyze...');
+        setUploadedFile(null);
       }
     }
   };
@@ -154,7 +168,12 @@ function App() {
 
   // Handle connect button based on input mode
   const handleConnect = () => {
+    console.log('🔌 Connect button clicked! Current inputMode:', inputMode);
+    console.log('🔌 Current isConnected:', isConnected);
+    console.log('🔌 Current ws state:', ws?.readyState);
+    
     if (inputMode === 'live') {
+      console.log('📹 Starting live camera connection...');
       connectWebSocket('/stream_video');
     } else if (inputMode === 'cctv' && cctvConfig) {
       const query = new URLSearchParams({
@@ -171,24 +190,33 @@ function App() {
       connectWebSocket('/stream_video'); // Default fallback, should be updated with correct endpoint
     } else {
       // Default to live camera if no specific mode
+      console.log('🔄 No specific input mode, defaulting to live camera');
       connectWebSocket('/stream_video');
     }
   };
 
   // WebSocket connection handler
   const connectWebSocket = useCallback((endpoint = '/stream_video') => {
+    console.log('🌐 connectWebSocket called with endpoint:', endpoint);
+    console.log('🌐 Current ws state before connection:', ws?.readyState);
+    
     if (ws) {
-      ws.close();
+      console.log('🔌 Closing existing WebSocket connection');
+      ws.close(1000, 'Reconnecting');
     }
 
-    // Add username to WebSocket connection
-    const username = user?.username || 'demo_user';
-    const separator = endpoint.includes('?') ? '&' : '?';
-    const wsUrl = `ws://localhost:8000${endpoint}${separator}username=${encodeURIComponent(username)}`;
-    
-    const newWs = new WebSocket(wsUrl);
+    // Add a small delay to ensure the previous connection is fully closed
+    setTimeout(() => {
+      // Add username to WebSocket connection
+      const username = user?.username || 'demo_user';
+      const separator = endpoint.includes('?') ? '&' : '?';
+      const wsUrl = `ws://127.0.0.1:8000${endpoint}${separator}username=${encodeURIComponent(username)}`;
+      
+      console.log('🌐 Attempting WebSocket connection to:', wsUrl);
+      const newWs = new WebSocket(wsUrl);
     
     newWs.onopen = () => {
+      console.log('✅ WebSocket connection opened successfully!');
       setIsConnected(true);
       setCurrentDetails('Connected - Monitoring for anomalies...');
       console.log(`WebSocket connected to ${endpoint} for user ${username}`);
@@ -200,8 +228,14 @@ function App() {
         setJsonData(data);
 
         if (data.error) {
+          console.error('❌ WebSocket received error:', data.error);
           setCurrentDetails(`Error: ${data.error}`);
           return;
+        }
+
+        // Handle video frame data for live display
+        if (data.frame_data) {
+          setVideoFrame(data.frame_data);
         }
 
         // Update current video file
@@ -347,13 +381,15 @@ function App() {
     };
 
     newWs.onclose = (event) => {
+      console.log('🔌 WebSocket connection closed:', event.code, event.reason, event.wasClean);
       setIsConnected(false);
       setAnomalyStatus('Normal');
+      setVideoFrame(null);
       setCurrentDetails('Disconnected from monitoring service');
       console.log('WebSocket disconnected:', event.code, event.reason);
       
-      // Auto-reconnect after 3 seconds if not a normal closure
-      if (event.code !== 1000 && !event.wasClean) {
+      // Only auto-reconnect if it was an unexpected disconnection (not manual disconnect)
+      if (event.code !== 1000 && !event.wasClean && inputMode !== 'none') {
         console.log('Attempting to reconnect in 3 seconds...');
         setTimeout(() => {
           if (!ws || ws.readyState === WebSocket.CLOSED) {
@@ -365,19 +401,30 @@ function App() {
     };
 
     newWs.onerror = (error) => {
-      setCurrentDetails('Connection error - Check camera access');
-      console.error('WebSocket error:', error);
+      console.error('❌ WebSocket connection error:', error);
+      console.error('❌ WebSocket readyState:', newWs.readyState);
+      console.error('❌ WebSocket URL was:', wsUrl);
+      setCurrentDetails('Connection error - Check camera access and backend server');
+      console.error('WebSocket error details:', error);
     };
 
     setWs(newWs);
-  }, [ws, user?.username]);
+    }, 1000); // Close the setTimeout function with 1 second delay
+  }, [ws, user?.username, inputMode]); // Added inputMode dependency
 
   // Disconnect WebSocket
   const disconnectWebSocket = useCallback(() => {
     if (ws) {
-      ws.close();
+      console.log('🔌 Properly disconnecting WebSocket...');
+      ws.close(1000, 'User initiated disconnect'); // Normal closure
       setWs(null);
     }
+    setIsConnected(false);
+    setVideoFrame(null);
+    // Add a small delay to ensure backend properly cleans up
+    setTimeout(() => {
+      console.log('🔌 WebSocket cleanup complete');
+    }, 1000);
   }, [ws]);
 
   // Refresh anomalies from backend
@@ -442,15 +489,17 @@ function App() {
 
   const handleDisconnect = () => {
     disconnectWebSocket();
-    setInputMode('none');
-    setCurrentDetails('Disconnected');
+    // Don't reset inputMode to 'none' - keep the current input type for reconnection
+    setCurrentDetails('Disconnected - Ready to reconnect');
+    setIsConnected(false);
+    setVideoFrame(null); // Clear video frame
   };
 
   const handleDownloadData = async () => {
     try {
       setCurrentDetails('Preparing download...');
       const username = user?.username || 'demo_user';
-      const response = await fetch(`http://localhost:8000/download-session-data?username=${encodeURIComponent(username)}`);
+      const response = await fetch(`http://127.0.0.1:8000/download-session-data?username=${encodeURIComponent(username)}`);
       
       if (!response.ok) {
         throw new Error('Download failed');
@@ -572,6 +621,7 @@ function App() {
         onToggleJson={handleToggleJson}
         onDisconnect={handleDisconnect}
         onDownloadData={handleDownloadData}
+        videoFrame={videoFrame}
       />
     );
   }

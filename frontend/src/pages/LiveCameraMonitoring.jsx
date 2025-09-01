@@ -18,7 +18,8 @@ const LiveCameraMonitoring = ({
   showJsonPanel,
   onToggleJson,
   onDisconnect,
-  onDownloadData 
+  onDownloadData,
+  videoFrame
 }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black cyber-grid-bg">
@@ -102,6 +103,8 @@ const LiveCameraMonitoring = ({
                   currentDetails={currentDetails}
                   isConnected={isConnected}
                   showVideoStream={true}
+                  videoFrame={videoFrame}
+                  ws={ws}
                 />
               </div>
             </div>

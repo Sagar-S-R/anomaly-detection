@@ -43,7 +43,12 @@ const VideoUploadMonitoring = ({
         if (prev >= 100) {
           clearInterval(interval);
           setIsUploading(false);
-          onVideoUpload(selectedFile);
+          
+          // Use setTimeout to avoid setState during render cycle
+          setTimeout(() => {
+            onVideoUpload(selectedFile);
+          }, 0);
+          
           return 100;
         }
         return prev + 10;
@@ -253,8 +258,22 @@ const VideoUploadMonitoring = ({
               
               {currentVideoFile ? (
                 <VideoPlayback 
-                  videoFile={currentVideoFile}
-                  anomalies={anomalies}
+                  currentVideoFile={currentVideoFile}
+                  onLoadLatest={() => {
+                    // For video uploads, return the current video file
+                    return currentVideoFile;
+                  }}
+                  onJumpToAnomaly={() => {
+                    // Find the latest anomaly and return jump data
+                    if (anomalies && anomalies.length > 0) {
+                      const lastAnomaly = anomalies[anomalies.length - 1];
+                      return {
+                        videoFile: currentVideoFile,
+                        timestamp: lastAnomaly.timestamp || 0
+                      };
+                    }
+                    return null;
+                  }}
                 />
               ) : (
                 <div className="aspect-video bg-gray-800/50 border border-gray-700/50 rounded-xl flex items-center justify-center">

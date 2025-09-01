@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 
-const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream }) => {
+const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream, videoFrame, ws }) => {
   const [videoError, setVideoError] = useState(false);
   const [videoKey, setVideoKey] = useState(Date.now());
+  const [useWebSocketStream, setUseWebSocketStream] = useState(false);
 
   // Auto-refresh video stream every 30 seconds to prevent stale streams
   useEffect(() => {
@@ -14,6 +15,11 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream 
 
     return () => clearInterval(interval);
   }, [showVideoStream]);
+
+  // Use WebSocket stream when connected to avoid camera conflicts
+  useEffect(() => {
+    setUseWebSocketStream(isConnected && ws);
+  }, [isConnected, ws]);
 
   const isAnomalyDetected = anomalyStatus === 'Anomaly Detected';
   
@@ -135,18 +141,62 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream 
                   </div>
                 </div>
               ) : (
-                <img
-                  key={videoKey}
-                  src={`/video_stream?t=${videoKey}`}
-                  alt="Live Video Stream"
-                  className="w-full h-auto max-h-96 object-contain transition-all duration-500 border-4 rounded-xl"
-                  onError={handleVideoError}
-                  onLoad={handleVideoLoad}
-                  style={{
-                    borderColor: isAnomalyDetected ? '#ef4444' : '#00d4aa',
-                    boxShadow: isAnomalyDetected ? '0 0 30px rgba(239, 68, 68, 0.5)' : '0 0 20px rgba(0, 212, 170, 0.3)'
-                  }}
-                />
+                <div className="relative">
+                  {/* Use WebSocket video frame when available, otherwise fallback to MJPEG stream */}
+                  {useWebSocketStream && videoFrame ? (
+                    <img
+                      src={`data:image/jpeg;base64,${videoFrame}`}
+                      alt="Live Video Stream (WebSocket)"
+                      className="w-full h-auto max-h-96 object-contain transition-all duration-300 border-4 rounded-xl"
+                      style={{
+                        borderColor: isAnomalyDetected ? '#ef4444' : '#00d4aa',
+                        boxShadow: isAnomalyDetected ? '0 0 30px rgba(239, 68, 68, 0.5)' : '0 0 20px rgba(0, 212, 170, 0.3)'
+                      }}
+                    />
+                  ) : !useWebSocketStream ? (
+                    <img
+                      key={videoKey}
+                      src={`http://127.0.0.1:8000/video_stream?t=${videoKey}`}
+                      alt="Live Video Stream (MJPEG)"
+                      className="w-full h-auto max-h-96 object-contain transition-all duration-500 border-4 rounded-xl"
+                      onError={handleVideoError}
+                      onLoad={handleVideoLoad}
+                      style={{
+                        borderColor: isAnomalyDetected ? '#ef4444' : '#00d4aa',
+                        boxShadow: isAnomalyDetected ? '0 0 30px rgba(239, 68, 68, 0.5)' : '0 0 20px rgba(0, 212, 170, 0.3)'
+                      }}
+                    />
+                  ) : (
+                    <div className="aspect-video flex items-center justify-center bg-gray-900/80 border-4 rounded-xl" 
+                         style={{borderColor: '#00d4aa'}}>
+                      <div className="text-center p-8">
+                        <svg className="w-12 h-12 text-cyan-400 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <p className="text-cyan-400 font-mono text-sm">Waiting for video stream...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Anomaly Status Overlay */}
+                  {isAnomalyDetected && (
+                    <div className="absolute top-4 left-4 bg-red-600/90 text-white px-4 py-2 rounded-lg font-bold font-mono text-sm cyber-pulse border border-red-400">
+                      ⚠️ ANOMALY DETECTED
+                    </div>
+                  )}
+                  
+                  {/* Connection Status Overlay */}
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full cyber-pulse ${
+                      isConnected ? 'bg-green-400' : 'bg-gray-400'
+                    }`}></div>
+                    <span className={`text-xs font-mono font-bold ${
+                      isConnected ? 'text-green-400' : 'text-gray-400'
+                    }`}>
+                      {isConnected ? 'LIVE' : 'OFFLINE'}
+                    </span>
+                  </div>
+                </div>
               )}
               
               {/* Stream indicator */}
