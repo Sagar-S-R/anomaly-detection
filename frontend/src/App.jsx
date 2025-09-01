@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import Login from './components/Login';
+import Welcome from './components/Welcome';
 import LiveFeed from './components/LiveFeed';
 import AnomalyList from './components/AnomalyList';
 import VideoPlayback from './components/VideoPlayback';
@@ -9,6 +11,21 @@ import DatabaseManager from './components/DatabaseManager';
 import './index.css';
 
 function App() {
+  // Authentication state
+  const [user, setUser] = useState(null);
+  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'welcome', 'input-selector', 'monitoring'
+  
+  // Debug/Demo mode - set to true to skip login
+  const DEMO_MODE = false; // Change to true to skip authentication
+  
+  // Initialize demo user if in demo mode
+  useEffect(() => {
+    if (DEMO_MODE && !user) {
+      setUser({ username: 'demo_user', timestamp: new Date() });
+      setCurrentPage('input-selector');
+    }
+  }, [user]);
+  
   // Main state management
   const [isConnected, setIsConnected] = useState(false);
   const [anomalyStatus, setAnomalyStatus] = useState('Normal');
@@ -25,6 +42,85 @@ function App() {
   
   // WebSocket management
   const [ws, setWs] = useState(null);
+
+  // Authentication handlers
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setCurrentPage('welcome');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentPage('login');
+    // Clean up any WebSocket connections
+    if (ws) {
+      ws.close();
+      setWs(null);
+    }
+    setIsConnected(false);
+    setInputMode('none');
+  };
+
+  const handleWelcomeContinue = () => {
+    setCurrentPage('input-selector');
+  };
+
+  const handleInputModeSelect = async (mode, config = null) => {
+    setInputMode(mode);
+    setCurrentPage('monitoring');
+    
+    if (mode === 'live') {
+      connectWebSocket('/stream_video');
+    } else if (mode === 'cctv' && config) {
+      setCctvConfig(config);
+      const query = new URLSearchParams({
+        ip: config.ip,
+        port: config.port,
+        ...(config.username && { username: config.username }),
+        ...(config.password && { password: config.password })
+      });
+      connectWebSocket(`/connect_cctv?${query}`);
+    } else if (mode === 'upload' && config) {
+      // For upload mode, config contains the file
+      const file = config;
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        setCurrentDetails('Uploading video...');
+        const uploadResponse = await fetch('/upload_video', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error('Upload failed');
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        setCurrentDetails('Video uploaded, starting analysis...');
+        
+        // Connect to processing WebSocket
+        connectWebSocket(`/process_uploaded_video/${uploadResult.filename}`);
+        
+      } catch (error) {
+        setCurrentDetails(`Upload failed: ${error.message}`);
+        setInputMode('none');
+        setCurrentPage('input-selector');
+      }
+    }
+  };
+
+  const handleBackToInputSelector = () => {
+    // Clean up connections
+    if (ws) {
+      ws.close();
+      setWs(null);
+    }
+    setIsConnected(false);
+    setInputMode('none');
+    setCurrentPage('input-selector');
+  };
 
   // WebSocket connection handler
   const connectWebSocket = useCallback((endpoint = '/stream_video') => {
@@ -203,54 +299,6 @@ function App() {
     return null;
   };
 
-  // Input method handlers
-  const handleLiveCamera = () => {
-    setInputMode('live');
-    connectWebSocket('/stream_video');
-  };
-
-  const handleCCTVConnect = (config) => {
-    setCctvConfig(config);
-    setInputMode('cctv');
-    const query = new URLSearchParams({
-      ip: config.ip,
-      port: config.port,
-      ...(config.username && { username: config.username }),
-      ...(config.password && { password: config.password })
-    });
-    connectWebSocket(`/connect_cctv?${query}`);
-  };
-
-  const handleVideoUpload = async (file) => {
-    setInputMode('upload');
-    
-    // Upload the file first
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    try {
-      setCurrentDetails('Uploading video...');
-      const uploadResponse = await fetch('/upload_video', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error('Upload failed');
-      }
-      
-      const uploadResult = await uploadResponse.json();
-      setCurrentDetails('Video uploaded, starting analysis...');
-      
-      // Connect to processing WebSocket
-      connectWebSocket(`/process_uploaded_video/${uploadResult.filename}`);
-      
-    } catch (error) {
-      setCurrentDetails(`Upload failed: ${error.message}`);
-      setInputMode('none');
-    }
-  };
-
   const handleDisconnect = () => {
     disconnectWebSocket();
     setInputMode('none');
@@ -282,40 +330,144 @@ function App() {
     }
   };
 
+  // Render based on current page
+  if (currentPage === 'login') {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  if (currentPage === 'welcome') {
+    return (
+      <Welcome 
+        user={user}
+        onContinue={handleWelcomeContinue}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (currentPage === 'input-selector') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black cyber-grid-bg">
+        <div className="container mx-auto px-6 py-8">
+          {/* Header with User Info */}
+          <div className="flex justify-between items-center mb-12">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-teal-400 rounded-xl flex items-center justify-center text-black text-2xl font-bold shadow-lg cyber-glow border border-cyan-400">
+                <span className="font-mono">⚡</span>
+              </div>
+              <div>
+                <h1 className="cyber-title text-5xl mb-2">
+                  MONITORING SYSTEM
+                </h1>
+                <p className="cyber-subtitle text-xl text-cyan-300">
+                  Select your input source to begin
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="cyber-panel px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-green-400 rounded-full cyber-pulse"></div>
+                  <span className="text-green-400 font-mono font-bold">
+                    {user.username.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="cyber-btn-secondary px-6 py-3 rounded-xl font-mono font-bold tracking-wider uppercase"
+              >
+                LOGOUT
+              </button>
+            </div>
+          </div>
+
+          {/* Input Method Selection */}
+          <InputSelector
+            inputMode={inputMode}
+            isConnected={isConnected}
+            onLiveCamera={(mode) => handleInputModeSelect(mode)}
+            onCCTVConnect={(mode, config) => handleInputModeSelect(mode, config)}
+            onVideoUpload={(file) => handleInputModeSelect('upload', file)}
+            onDisconnect={handleDisconnect}
+            onDownloadData={handleDownloadData}
+            cctvConfig={cctvConfig}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Main monitoring interface
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="container mx-auto px-6 py-8 max-w-7xl">
-        {/* Header */}
-        <div className="mb-10">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-              A
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 relative">
+      {/* Cyber Grid Overlay */}
+      <div className="fixed inset-0 opacity-20 pointer-events-none z-0">
+        <div 
+          className="w-full h-full" 
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(0,255,255,0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0,255,255,0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: '50px 50px',
+            animation: 'gridMove 20s linear infinite'
+          }}
+        />
+      </div>
+
+      <div className="container mx-auto px-6 py-8 max-w-7xl relative z-10">
+        {/* Header with User Info and Back Button */}
+        <div className="flex justify-between items-center mb-10">
+          <div className="flex items-center gap-6">
+            <button
+              onClick={handleBackToInputSelector}
+              className="cyber-btn-secondary px-4 py-3 rounded-xl font-mono font-bold tracking-wider uppercase"
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                BACK
+              </div>
+            </button>
+            <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-teal-400 rounded-xl flex items-center justify-center text-black text-2xl font-bold shadow-lg cyber-glow border border-cyan-400">
+              <span className="font-mono">⚡</span>
             </div>
             <div>
-              <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
-                Anomaly Detection System
+              <h1 className="cyber-title text-5xl mb-2">
+                ANOMALY DETECTION SYSTEM
               </h1>
-              <p className="text-slate-600 mt-1 text-lg">
-                Real-time AI-powered security monitoring and threat detection
+              <p className="cyber-subtitle text-xl text-cyan-300">
+                {inputMode === 'live' ? 'Live Camera Monitoring' : 
+                 inputMode === 'cctv' ? 'CCTV Stream Monitoring' : 
+                 inputMode === 'upload' ? 'Video Upload Analysis' : 'Real-time Security Monitoring'}
               </p>
             </div>
           </div>
-          <div className="h-1 bg-blue-100 rounded-full w-full">
-            <div className="h-1 bg-blue-600 rounded-full w-1/4 transition-all duration-300"></div>
+          
+          <div className="flex items-center gap-4">
+            <div className="cyber-panel px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-green-400 rounded-full cyber-pulse"></div>
+                <span className="text-green-400 font-mono font-bold">
+                  {user.username.toUpperCase()}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="cyber-btn-secondary px-6 py-3 rounded-xl font-mono font-bold tracking-wider uppercase"
+            >
+              LOGOUT
+            </button>
           </div>
         </div>
-
-        {/* Input Method Selection */}
-        <InputSelector
-          inputMode={inputMode}
-          isConnected={isConnected}
-          onLiveCamera={handleLiveCamera}
-          onCCTVConnect={handleCCTVConnect}
-          onVideoUpload={handleVideoUpload}
-          onDisconnect={handleDisconnect}
-          onDownloadData={handleDownloadData}
-          cctvConfig={cctvConfig}
-        />
+        
+        {/* Cyber Progress Bar */}
+        <div className="cyber-progress h-2 w-full mb-10">
+          <div className="cyber-progress-fill" style={{ width: '75%' }}></div>
+        </div>
 
         {/* Main Controls */}
         <VideoControls

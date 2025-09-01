@@ -32,81 +32,81 @@ const InputSelector = ({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-slate-200">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">Input Source</h2>
+    <div className="cyber-card p-8 mb-8 reveal-up">
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="cyber-title text-3xl">INPUT SOURCE</h2>
         {isConnected && (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-green-600 font-medium">
-                {inputMode === 'live' && 'Live Camera'}
-                {inputMode === 'cctv' && 'CCTV Stream'}
-                {inputMode === 'upload' && 'Processing Video'}
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-4 h-4 bg-green-400 rounded-full cyber-pulse"></div>
+              <span className="text-green-400 font-semibold text-cyber-glow font-mono uppercase tracking-wider">
+                {inputMode === 'live' && 'LIVE CAMERA'}
+                {inputMode === 'cctv' && 'CCTV STREAM'}
+                {inputMode === 'upload' && 'PROCESSING VIDEO'}
               </span>
             </div>
             <button
               onClick={onDownloadData}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
+              className="cyber-btn cyber-btn-purple flex items-center gap-2 text-sm"
             >
-              📥 Download Data
+              ⬇ DOWNLOAD DATA
             </button>
           </div>
         )}
       </div>
 
       {!isConnected ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Live Camera Option */}
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center text-white text-2xl mx-auto mb-4">
+          <div className="cyber-card bg-gradient-to-br from-green-900/20 to-green-800/10 border-green-400/30 hover:border-green-400/60 transition-all duration-300 group">
+            <div className="text-center p-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-500 rounded-2xl flex items-center justify-center text-black text-3xl mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
                 📹
               </div>
-              <h3 className="text-lg font-semibold text-green-800 mb-2">Live Camera</h3>
-              <p className="text-sm text-green-600 mb-4">
+              <h3 className="text-xl font-bold text-green-400 mb-3 font-mono">LIVE CAMERA</h3>
+              <p className="text-gray-300 mb-6 text-sm leading-relaxed">
                 Real-time monitoring using your device camera
               </p>
               <button
                 onClick={onLiveCamera}
-                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                className="cyber-btn cyber-btn-green w-full"
               >
-                Start Live Feed
+                START LIVE FEED
               </button>
             </div>
           </div>
 
           {/* CCTV Option */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 border border-blue-200">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl mx-auto mb-4">
+          <div className="cyber-card bg-gradient-to-br from-cyan-900/20 to-cyan-800/10 border-cyan-400/30 hover:border-cyan-400/60 transition-all duration-300 group">
+            <div className="text-center p-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-cyan-500 rounded-2xl flex items-center justify-center text-black text-3xl mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
                 🎥
               </div>
-              <h3 className="text-lg font-semibold text-blue-800 mb-2">CCTV Stream</h3>
-              <p className="text-sm text-blue-600 mb-4">
-                Connect to IP camera via RTSP
+              <h3 className="text-xl font-bold text-cyan-400 mb-3 font-mono">CCTV STREAM</h3>
+              <p className="text-gray-300 mb-6 text-sm leading-relaxed">
+                Connect to IP camera via RTSP protocol
               </p>
               <button
                 onClick={() => setShowCCTVForm(true)}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="cyber-btn w-full"
               >
-                Connect CCTV
+                CONNECT CCTV
               </button>
             </div>
           </div>
 
           {/* Upload Video Option */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-6 border border-purple-200">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center text-white text-2xl mx-auto mb-4">
+          <div className="cyber-card bg-gradient-to-br from-purple-900/20 to-purple-800/10 border-purple-400/30 hover:border-purple-400/60 transition-all duration-300 group">
+            <div className="text-center p-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-purple-400 to-purple-500 rounded-2xl flex items-center justify-center text-black text-3xl mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
                 📁
               </div>
-              <h3 className="text-lg font-semibold text-purple-800 mb-2">Upload Video</h3>
-              <p className="text-sm text-purple-600 mb-4">
+              <h3 className="text-xl font-bold text-purple-400 mb-3 font-mono">UPLOAD VIDEO</h3>
+              <p className="text-gray-300 mb-6 text-sm leading-relaxed">
                 Analyze pre-recorded video files
               </p>
-              <label className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium cursor-pointer block">
-                Select Video File
+              <label className="cyber-btn cyber-btn-purple w-full cursor-pointer block">
+                SELECT VIDEO FILE
                 <input
                   type="file"
                   accept="video/*"
@@ -119,39 +119,50 @@ const InputSelector = ({
         </div>
       ) : (
         /* Connected State */
-        <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-white text-xl">
+        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-900/30 to-green-800/20 border border-green-400/40 rounded-xl backdrop-blur-sm">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-green-500 rounded-xl flex items-center justify-center text-black text-2xl">
               {inputMode === 'live' && '📹'}
               {inputMode === 'cctv' && '🎥'}
               {inputMode === 'upload' && '📁'}
             </div>
             <div>
-              <h3 className="font-semibold text-green-800">
-                {inputMode === 'live' && 'Live Camera Active'}
-                {inputMode === 'cctv' && `CCTV Connected (${cctvConfig.ip})`}
-                {inputMode === 'upload' && 'Processing Uploaded Video'}
+              <h3 className="text-xl font-bold text-green-400 font-mono">
+                {inputMode === 'live' && 'LIVE CAMERA ACTIVE'}
+                {inputMode === 'cctv' && `CCTV CONNECTED (${cctvConfig.ip})`}
+                {inputMode === 'upload' && 'PROCESSING UPLOADED VIDEO'}
               </h3>
-              <p className="text-sm text-green-600">Monitoring for anomalies...</p>
+              <p className="text-green-300 text-sm">System monitoring for anomalies...</p>
             </div>
           </div>
           <button
             onClick={onDisconnect}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+            className="cyber-btn cyber-btn-red"
           >
-            Disconnect
+            DISCONNECT
           </button>
         </div>
       )}
 
       {/* CCTV Configuration Modal */}
       {showCCTVForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-xl font-bold text-slate-900 mb-4">Connect to CCTV</h3>
-            <form onSubmit={handleCCTVSubmit} className="space-y-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+          <div className="cyber-panel p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="cyber-title text-2xl">CONNECT TO CCTV</h3>
+              <button
+                onClick={() => setShowCCTVForm(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-red-400/40 text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <form onSubmit={handleCCTVSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
                   IP Address *
                 </label>
                 <input
@@ -160,11 +171,12 @@ const InputSelector = ({
                   placeholder="192.168.1.100"
                   value={cctvForm.ip}
                   onChange={(e) => setCctvForm({...cctvForm, ip: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
                 />
               </div>
+              
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
                   Port
                 </label>
                 <input
@@ -172,11 +184,12 @@ const InputSelector = ({
                   placeholder="554"
                   value={cctvForm.port}
                   onChange={(e) => setCctvForm({...cctvForm, port: parseInt(e.target.value) || 554})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
                 />
               </div>
+              
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
                   Username (optional)
                 </label>
                 <input
@@ -184,11 +197,12 @@ const InputSelector = ({
                   placeholder="admin"
                   value={cctvForm.username}
                   onChange={(e) => setCctvForm({...cctvForm, username: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
                 />
               </div>
+              
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-semibold text-cyan-400 mb-2 font-mono uppercase">
                   Password (optional)
                 </label>
                 <input
@@ -196,22 +210,23 @@ const InputSelector = ({
                   placeholder="password"
                   value={cctvForm.password}
                   onChange={(e) => setCctvForm({...cctvForm, password: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-400/30 rounded-xl text-gray-100 placeholder-gray-500 font-mono focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300"
                 />
               </div>
-              <div className="flex gap-3 pt-4">
+              
+              <div className="flex gap-4 pt-6">
                 <button
                   type="button"
                   onClick={() => setShowCCTVForm(false)}
-                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="flex-1 py-3 px-6 bg-gray-600/40 border border-gray-500/40 text-gray-400 rounded-xl font-mono font-bold tracking-wider uppercase hover:bg-gray-600/60 hover:border-gray-400/60 transition-all duration-300"
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="cyber-btn-primary flex-1 py-3 px-6 rounded-xl font-mono font-bold tracking-wider uppercase"
                 >
-                  Connect
+                  CONNECT
                 </button>
               </div>
             </form>
