@@ -1,136 +1,629 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Anomaly Detection Dashboard</title>
+    <title>🛡️ NEXUS ANOMALY DETECTION SYSTEM</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .video-section { margin-bottom: 20px; }
-        .anomaly-list { margin-top: 20px; }
-        .anomaly-item { 
-            border: 1px solid #ddd; 
-            padding: 15px; 
-            margin: 10px 0; 
-            border-radius: 5px;
-            background: #f9f9f9;
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --cyber-primary: #00ffff;
+            --cyber-green: #00ff88;
+            --cyber-red: #ff0044;
+            --cyber-yellow: #ffdd00;
+            --cyber-purple: #8844ff;
+            --cyber-dark: #0a0a0a;
+            --cyber-darker: #050505;
+            --cyber-gray: #1a1a1a;
+            --cyber-light-gray: #2a2a2a;
+            --cyber-blue: #0088ff;
         }
-        .anomaly-item.high-threat { border-left: 5px solid #ff4444; }
-        .anomaly-item.medium-threat { border-left: 5px solid #ffaa44; }
-        .anomaly-item.low-threat { border-left: 5px solid #44ff44; }
-        .anomaly-frame { max-width: 300px; margin: 10px 0; }
-        .status { 
-            padding: 10px; 
-            margin: 10px 0; 
-            border-radius: 5px; 
-            font-weight: bold;
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .status.normal { background: #d4edda; color: #155724; }
-        .status.anomaly { background: #f8d7da; color: #721c24; }
-        .live-feed { 
-            border: 2px solid #ddd; 
-            padding: 20px; 
-            border-radius: 10px; 
+
+        body {
+            background: linear-gradient(135deg, var(--cyber-darker) 0%, var(--cyber-dark) 50%, #0f1419 100%);
+            color: var(--cyber-primary);
+            font-family: 'Rajdhani', monospace;
+            overflow-x: hidden;
+            position: relative;
+            min-height: 100vh;
+        }
+
+        /* Cyber Grid Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+        }
+
+        /* Header */
+        .main-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px solid var(--cyber-primary);
+            border-radius: 15px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.8), transparent);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .main-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.3), transparent);
+            animation: scanline 3s ease-in-out infinite;
+        }
+
+        @keyframes scanline {
+            0%, 100% { left: -100%; }
+            50% { left: 100%; }
+        }
+
+        .main-header h1 {
+            font-family: 'Orbitron', monospace;
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--cyber-primary);
+            text-shadow: 0 0 20px var(--cyber-primary);
+            margin-bottom: 10px;
+            letter-spacing: 3px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .main-header .subtitle {
+            font-size: 1.2rem;
+            color: var(--cyber-green);
+            font-weight: 300;
+            letter-spacing: 2px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Main Grid Layout */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        /* Live Feed Section */
+        .live-feed {
+            border: 2px solid var(--cyber-green);
+            border-radius: 15px;
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.3), transparent);
+            backdrop-filter: blur(5px);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .live-feed.anomaly-detected {
+            border-color: var(--cyber-red);
+            background: linear-gradient(135deg, rgba(255, 0, 68, 0.1), transparent);
+            box-shadow: 0 0 30px rgba(255, 0, 68, 0.3);
+            animation: alertPulse 1s ease-in-out infinite alternate;
+        }
+
+        @keyframes alertPulse {
+            0% { box-shadow: 0 0 30px rgba(255, 0, 68, 0.3); }
+            100% { box-shadow: 0 0 50px rgba(255, 0, 68, 0.6); }
+        }
+
+        .section-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--cyber-primary);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: linear-gradient(90deg, var(--cyber-primary), transparent);
+        }
+
+        /* Status Display */
+        .status {
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-align: center;
+            border: 2px solid;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status.normal {
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), transparent);
+            border-color: var(--cyber-green);
+            color: var(--cyber-green);
+        }
+
+        .status.anomaly {
+            background: linear-gradient(135deg, rgba(255, 0, 68, 0.2), transparent);
+            border-color: var(--cyber-red);
+            color: var(--cyber-red);
+            animation: statusBlink 0.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes statusBlink {
+            0% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+
+        .current-details {
+            background: var(--cyber-gray);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            color: rgba(0, 255, 255, 0.9);
             margin-bottom: 20px;
         }
-        .live-feed.anomaly-detected { border-color: #ff4444; background: #ffe6e6; }
-        .video-container { 
-            text-align: center; 
-            margin: 15px 0; 
+
+        /* Video Container */
+        .video-container {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
         }
-        #liveVideoStream { 
-            border-radius: 8px; 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            transition: border-color 0.3s ease;
+
+        #liveVideoStream {
+            border-radius: 12px;
+            border: 3px solid var(--cyber-green);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+            transition: all 0.3s ease;
+            max-width: 100%;
+            height: auto;
         }
-        #liveVideoStream.anomaly-border { 
-            border-color: #ff4444 !important; 
-            box-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+
+        #liveVideoStream.anomaly-border {
+            border-color: var(--cyber-red);
+            box-shadow: 0 0 30px rgba(255, 0, 68, 0.6);
+            animation: alertGlow 1s ease-in-out infinite alternate;
         }
-        .stream-controls { 
-            text-align: center; 
-            margin-top: 15px; 
+
+        @keyframes alertGlow {
+            0% { box-shadow: 0 0 30px rgba(255, 0, 68, 0.6); }
+            100% { box-shadow: 0 0 50px rgba(255, 0, 68, 1); }
         }
-        button { 
-            background: #007bff; 
-            color: white; 
-            border: none; 
-            padding: 10px 20px; 
-            border-radius: 5px; 
-            cursor: pointer; 
-            margin: 5px;
+
+        /* Right Panel - JSON and Controls */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
-        button:hover { background: #0056b3; }
-        .video-controls { margin: 10px 0; }
-        #videoPlayer { width: 100%; max-width: 600px; }
-        
-        /* JSON Output Styles */
+
+        /* JSON Output Section */
+        .json-section {
+            border: 2px solid var(--cyber-purple);
+            border-radius: 15px;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.3), transparent);
+            flex: 1;
+        }
+
         .json-output {
-            background: #1e1e1e;
-            color: #f8f8f2;
+            background: var(--cyber-darker);
+            color: var(--cyber-primary);
             padding: 15px;
-            border-radius: 5px;
+            border-radius: 10px;
             font-family: 'Courier New', monospace;
             font-size: 12px;
-            max-height: 400px;
+            height: 300px;
             overflow-y: auto;
             white-space: pre-wrap;
-            margin: 10px 0;
-            border: 1px solid #444;
+            border: 1px solid rgba(0, 255, 255, 0.3);
         }
-        .json-section {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
+
+        .json-output::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .json-output::-webkit-scrollbar-track {
+            background: var(--cyber-gray);
+        }
+
+        .json-output::-webkit-scrollbar-thumb {
+            background: var(--cyber-primary);
+            border-radius: 3px;
+        }
+
+        /* Controls Section */
+        .controls-section {
+            border: 2px solid var(--cyber-blue);
+            border-radius: 15px;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.3), transparent);
+        }
+
+        /* Cyber Buttons */
+        .cyber-btn {
+            background: linear-gradient(135deg, transparent, rgba(0, 255, 255, 0.1));
+            color: var(--cyber-primary);
+            border: 2px solid var(--cyber-primary);
+            padding: 10px 20px;
             border-radius: 8px;
-            border: 1px solid #dee2e6;
+            cursor: pointer;
+            font-family: 'Rajdhani', monospace;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 5px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            width: 100%;
         }
-        .json-toggle {
-            background: #28a745;
-            margin-bottom: 10px;
+
+        .cyber-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .cyber-btn.start-btn {
+            border-color: var(--cyber-green);
+            color: var(--cyber-green);
+        }
+
+        .cyber-btn.stop-btn {
+            border-color: var(--cyber-red);
+            color: var(--cyber-red);
+        }
+
+        .cyber-btn.info-btn {
+            border-color: var(--cyber-blue);
+            color: var(--cyber-blue);
+        }
+
+        /* Anomaly Frames Section */
+        .anomaly-frames {
+            margin-top: 30px;
+            border: 2px solid var(--cyber-yellow);
+            border-radius: 15px;
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.2), transparent);
+        }
+
+        .frame-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .frame-card {
+            border: 2px solid var(--cyber-light-gray);
+            border-radius: 12px;
+            padding: 15px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.5), transparent);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .frame-card:hover {
+            border-color: var(--cyber-primary);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+            transform: translateY(-5px);
+        }
+
+        .frame-card.high-threat {
+            border-left: 6px solid var(--cyber-red);
+        }
+
+        .frame-card.medium-threat {
+            border-left: 6px solid var(--cyber-yellow);
+        }
+
+        .frame-card.low-threat {
+            border-left: 6px solid var(--cyber-green);
+        }
+
+        .anomaly-frame {
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid rgba(0, 255, 255, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .anomaly-frame:hover {
+            border-color: var(--cyber-primary);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .frame-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(26, 26, 26, 0.7);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .threat-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .threat-high {
+            background: var(--cyber-red);
+            color: white;
+            box-shadow: 0 0 10px var(--cyber-red);
+        }
+
+        .threat-medium {
+            background: var(--cyber-yellow);
+            color: var(--cyber-dark);
+            box-shadow: 0 0 10px var(--cyber-yellow);
+        }
+
+        .threat-low {
+            background: var(--cyber-green);
+            color: var(--cyber-dark);
+            box-shadow: 0 0 10px var(--cyber-green);
+        }
+
+        /* Connection Status */
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            z-index: 1000;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .connection-status.connected {
+            background: var(--cyber-green);
+            color: var(--cyber-dark);
+            box-shadow: 0 0 10px var(--cyber-green);
+        }
+
+        .connection-status.disconnected {
+            background: var(--cyber-red);
+            color: white;
+            box-shadow: 0 0 10px var(--cyber-red);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-header h1 {
+                font-size: 2rem;
+            }
+            
+            .cyber-btn {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+            
+            .frame-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--cyber-primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Real-time Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.5), transparent);
+            border: 2px solid var(--cyber-light-gray);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--cyber-primary);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--cyber-primary);
+            font-family: 'Orbitron', monospace;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--cyber-yellow);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
         }
     </style>
 </head>
 <body>
+    <div class="connection-status disconnected" id="connectionStatus">DISCONNECTED</div>
+    
     <div class="container">
-        <h1>🛡️ Real-time Anomaly Detection System</h1>
+        <header class="main-header">
+            <h1>🛡️ NEXUS ANOMALY DETECTION</h1>
+            <div class="subtitle">REAL-TIME THREAT MONITORING DASHBOARD</div>
+        </header>
         
-        <div class="live-feed" id="liveFeed">
-            <h2>Live Video Stream</h2>
-            <div id="status" class="status normal">Status: Normal</div>
-            <div id="currentDetails">Monitoring for anomalies...</div>
-            <div class="video-container">
-                <img id="liveVideoStream" src="/video_stream" alt="Live Video Stream" style="width: 100%; max-width: 640px; border: 3px solid #28a745; border-radius: 8px;">
+        <div class="dashboard-grid">
+            <!-- Left Panel - Live Video Feed -->
+            <div class="live-feed" id="liveFeed">
+                <h2 class="section-title">🎥 LIVE SURVEILLANCE FEED</h2>
+                
+                <div id="status" class="status normal">Status: Initializing...</div>
+                <div class="current-details" id="currentDetails">System ready for anomaly detection...</div>
+                
+                <div class="video-container">
+                    <img id="liveVideoStream" 
+                         src="/video_stream" 
+                         alt="Live Video Stream" 
+                         style="width: 100%; max-width: 800px;">
+                    <div style="margin-top: 10px; font-size: 0.9rem; color: rgba(0, 255, 255, 0.7);">
+                        📡 Real-time feed with OpenCV anomaly overlay (🟢 Normal / 🔴 Anomaly)
+                    </div>
+                </div>
+                
+                <div class="stream-controls" style="margin-top: 20px;">
+                    <button class="cyber-btn start-btn" onclick="connectWebSocket()">
+                        🚀 START MONITORING
+                    </button>
+                    <button class="cyber-btn stop-btn" onclick="disconnectWebSocket()">
+                        🛑 STOP MONITORING
+                    </button>
+                    <button class="cyber-btn info-btn" onclick="toggleStreamDisplay()">
+                        👁️ TOGGLE STREAM
+                    </button>
+                    <button class="cyber-btn info-btn" onclick="restartVideoStream()">
+                        🔄 REFRESH FEED
+                    </button>
+                </div>
+
+                <!-- Real-time Stats -->
+                <div class="stats-grid" id="liveStats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="frameCount">0</div>
+                        <div class="stat-label">Frames Processed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="anomalyCount">0</div>
+                        <div class="stat-label">Anomalies Detected</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="threatLevel">LOW</div>
+                        <div class="stat-label">Current Threat</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="uptime">00:00</div>
+                        <div class="stat-label">Session Time</div>
+                    </div>
+                </div>
             </div>
-            <div class="stream-controls">
-                <button onclick="connectWebSocket()">Start Monitoring</button>
-                <button onclick="disconnectWebSocket()">Stop Monitoring</button>
-                <button onclick="toggleStreamDisplay()">Toggle Stream Display</button>
+
+            <!-- Right Panel - JSON Data and Controls -->
+            <div class="right-panel">
+                <div class="json-section">
+                    <h3 class="section-title">📊 LIVE DATA STREAM</h3>
+                    <button class="cyber-btn info-btn" onclick="toggleJsonDisplay()">
+                        🔍 TOGGLE JSON VIEW
+                    </button>
+                    <div id="jsonOutput" class="json-output">
+                        Waiting for telemetry data...
+                    </div>
+                </div>
+
+                <div class="controls-section">
+                    <h3 class="section-title">⚙️ SYSTEM CONTROLS</h3>
+                    <button class="cyber-btn info-btn" onclick="refreshAnomalies()">
+                        🔄 REFRESH DATA
+                    </button>
+                    <button class="cyber-btn info-btn" onclick="clearAnomalies()">
+                        🗑️ CLEAR ANOMALIES
+                    </button>
+                    <button class="cyber-btn info-btn" onclick="exportData()">
+                        💾 EXPORT SESSION
+                    </button>
+                    <button class="cyber-btn info-btn" onclick="showSystemStats()">
+                        📈 SYSTEM STATS
+                    </button>
+                </div>
             </div>
         </div>
 
-        <div class="json-section">
-            <h2>📊 Real-time JSON Data</h2>
-            <button class="json-toggle" onclick="toggleJsonDisplay()">Show/Hide JSON Output</button>
-            <div id="jsonOutput" class="json-output" style="display: none;">
-                Waiting for data...
+        <!-- Anomaly Frames Section -->
+        <div class="anomaly-frames">
+            <h2 class="section-title">🚨 ANOMALY FRAME ANALYSIS</h2>
+            <div style="margin-bottom: 20px; font-size: 0.95rem; color: rgba(0, 255, 255, 0.8);">
+                📸 Real-time captured frames showing detected anomalies with AI reasoning
             </div>
-        </div>
-
-        <div class="video-section">
-            <h2>📹 Video Playback</h2>
-            <div class="video-controls">
-                <button onclick="loadLatestVideo()">Load Latest Recording</button>
-                <button onclick="jumpToAnomaly()">Jump to Last Anomaly</button>
+            <div class="frame-grid" id="anomalyFrames">
+                <div style="text-align: center; padding: 40px; color: var(--cyber-green); grid-column: 1 / -1;">
+                    🛡️ NO ANOMALIES DETECTED<br>
+                    <small style="color: rgba(0, 255, 255, 0.7);">Monitoring for suspicious activity...</small>
+                </div>
             </div>
-            <video id="videoPlayer" controls style="display:none;">
-                Your browser does not support the video tag.
-            </video>
-        </div>
-
-        <div class="anomaly-list">
-            <h2>🚨 Detected Anomalies</h2>
-            <button onclick="refreshAnomalies()">Refresh List</button>
-            <div id="anomalyList">No anomalies detected yet.</div>
         </div>
     </div>
 
@@ -138,167 +631,348 @@
         let ws = null;
         let anomalies = [];
         let currentVideoFile = null;
+        let isMonitoring = false;
+        let sessionStartTime = null;
+        let frameCount = 0;
+        let anomalyCount = 0;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            updateConnectionStatus(false);
+            refreshAnomalies();
+            startUptimeCounter();
+        });
+
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (connected) {
+                statusEl.textContent = 'CONNECTED';
+                statusEl.className = 'connection-status connected';
+                isMonitoring = true;
+                sessionStartTime = Date.now();
+            } else {
+                statusEl.textContent = 'DISCONNECTED';
+                statusEl.className = 'connection-status disconnected';
+                isMonitoring = false;
+                sessionStartTime = null;
+            }
+        }
+
+        function startUptimeCounter() {
+            setInterval(() => {
+                if (sessionStartTime) {
+                    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('uptime').textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
 
         function connectWebSocket() {
-            if (ws) {
-                ws.close();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('WebSocket already connected');
+                return;
             }
             
-            ws = new WebSocket('ws://localhost:8000/stream_video');
+            frameCount = 0;
+            anomalyCount = 0;
+            updateStats();
+            
+            ws = new WebSocket('ws://localhost:8000/stream_video?username=dashboard_user');
             
             ws.onopen = function(event) {
-                document.getElementById('status').textContent = 'Status: Connected - Monitoring...';
+                console.log('🔌 WebSocket connected');
+                updateConnectionStatus(true);
+                document.getElementById('status').textContent = 'Status: 🔍 ACTIVE MONITORING';
                 document.getElementById('status').className = 'status normal';
+                document.getElementById('currentDetails').textContent = '🛡️ Neural networks analyzing video feed for anomalous patterns...';
             };
 
             ws.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                
-                // Display detailed JSON output
-                document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
-                
-                if (data.error) {
-                    document.getElementById('currentDetails').textContent = 'Error: ' + data.error;
-                    return;
-                }
-
-                // Update current video file
-                if (data.video_file) {
-                    currentVideoFile = data.video_file;
-                }
-
-                if (data.status === 'Suspected Anomaly') {
-                    document.getElementById('status').textContent = 'Status: 🚨 ANOMALY DETECTED!';
-                    document.getElementById('status').className = 'status anomaly';
-                    document.getElementById('liveFeed').className = 'live-feed anomaly-detected';
+                try {
+                    const data = JSON.parse(event.data);
                     
-                    // Update live stream border to red
-                    const liveStream = document.getElementById('liveVideoStream');
-                    liveStream.className = 'anomaly-border';
-                    liveStream.style.borderColor = '#ff4444';
+                    // Update frame count
+                    frameCount++;
                     
-                    // Add to anomalies list if it has frame info
-                    if (data.frame_count) {
-                        anomalies.push(data);
-                        displayAnomalies();
+                    // Display JSON output
+                    document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
+                    
+                    if (data.error) {
+                        document.getElementById('currentDetails').textContent = '⚠️ ERROR: ' + data.error;
+                        console.error('WebSocket error:', data.error);
+                        return;
                     }
-                } else {
-                    document.getElementById('status').textContent = 'Status: Normal';
-                    document.getElementById('status').className = 'status normal';
-                    document.getElementById('liveFeed').className = 'live-feed';
-                    
-                    // Update live stream border to green
-                    const liveStream = document.getElementById('liveVideoStream');
-                    liveStream.className = '';
-                    liveStream.style.borderColor = '#28a745';
-                }
 
-                document.getElementById('currentDetails').textContent = data.details || 'Monitoring...';
+                    // Update video file reference
+                    if (data.video_file) {
+                        currentVideoFile = data.video_file;
+                    }
+
+                    // Handle anomaly detection
+                    if (data.status === 'Suspected Anomaly') {
+                        handleAnomalyDetection(data);
+                    } else {
+                        handleNormalStatus(data);
+                    }
+
+                    updateStats();
+
+                } catch (error) {
+                    console.error('Error parsing WebSocket data:', error);
+                }
             };
 
             ws.onclose = function(event) {
-                document.getElementById('status').textContent = 'Status: Disconnected';
+                console.log('WebSocket closed:', event.code, event.reason);
+                updateConnectionStatus(false);
+                document.getElementById('status').textContent = 'Status: 🔌 DISCONNECTED';
                 document.getElementById('status').className = 'status normal';
                 document.getElementById('liveFeed').className = 'live-feed';
                 
-                // Reset live stream border
+                // Reset video stream border
                 const liveStream = document.getElementById('liveVideoStream');
-                liveStream.style.borderColor = '#ddd';
+                liveStream.className = '';
                 
-                console.log('WebSocket closed:', event.code, event.reason);
+                if (event.code !== 1000 && event.code !== 1001) {
+                    setTimeout(() => {
+                        console.log('Attempting to reconnect...');
+                        connectWebSocket();
+                    }, 3000);
+                }
             };
 
             ws.onerror = function(error) {
-                document.getElementById('currentDetails').textContent = 'WebSocket error occurred';
-                document.getElementById('status').textContent = 'Status: Connection Error';
                 console.error('WebSocket error:', error);
+                document.getElementById('currentDetails').textContent = '🚨 CONNECTION ERROR: Check if backend is running';
+                document.getElementById('status').textContent = 'Status: ❌ CONNECTION FAILED';
+                updateConnectionStatus(false);
             };
+        }
+
+        function handleAnomalyDetection(data) {
+            console.log('🚨 ANOMALY DETECTED:', data);
+            
+            anomalyCount++;
+            
+            // Update status displays
+            document.getElementById('status').textContent = 'Status: 🚨 THREAT DETECTED!';
+            document.getElementById('status').className = 'status anomaly';
+            document.getElementById('liveFeed').className = 'live-feed anomaly-detected';
+            
+            // Update video stream styling
+            const liveStream = document.getElementById('liveVideoStream');
+            liveStream.className = 'anomaly-border';
+            
+            // Update details
+            const details = data.details || 'Anomalous behavior detected by AI analysis';
+            document.getElementById('currentDetails').textContent = `🚨 ALERT: ${details}`;
+            
+            // Add to anomaly frames if it has frame data
+            if (data.frame_count || data.timestamp || data.frame_file) {
+                const enhancedData = {
+                    ...data,
+                    id: Date.now(),
+                    detected_at: new Date().toISOString(),
+                    threat_level: data.threat_severity_index || 0.7
+                };
+                
+                anomalies.unshift(enhancedData);
+                anomalies = anomalies.slice(0, 20); // Keep only last 20
+                displayAnomalyFrames();
+                
+                playAlertSound();
+            }
+        }
+
+        function handleNormalStatus(data) {
+            document.getElementById('status').textContent = 'Status: ✅ NORMAL OPERATION';
+            document.getElementById('status').className = 'status normal';
+            document.getElementById('liveFeed').className = 'live-feed';
+            
+            // Reset video stream styling
+            const liveStream = document.getElementById('liveVideoStream');
+            liveStream.className = '';
+            
+            const details = data.details || 'All systems normal - continuous monitoring active';
+            document.getElementById('currentDetails').textContent = `🛡️ ${details}`;
+        }
+
+        function updateStats() {
+            document.getElementById('frameCount').textContent = frameCount;
+            document.getElementById('anomalyCount').textContent = anomalyCount;
+            
+            // Update threat level based on recent anomalies
+            const recentAnomalies = anomalies.slice(0, 5);
+            const avgThreat = recentAnomalies.length > 0 ? 
+                recentAnomalies.reduce((sum, a) => sum + (a.threat_level || 0.5), 0) / recentAnomalies.length : 0;
+            
+            const threatLevel = avgThreat > 0.7 ? 'HIGH' : avgThreat > 0.4 ? 'MEDIUM' : 'LOW';
+            document.getElementById('threatLevel').textContent = threatLevel;
+            document.getElementById('threatLevel').style.color = 
+                avgThreat > 0.7 ? 'var(--cyber-red)' : avgThreat > 0.4 ? 'var(--cyber-yellow)' : 'var(--cyber-green)';
         }
 
         function disconnectWebSocket() {
             if (ws) {
-                ws.close();
+                ws.close(1000, 'User initiated disconnect');
                 ws = null;
             }
+            updateConnectionStatus(false);
         }
 
-        function displayAnomalies() {
-            const listDiv = document.getElementById('anomalyList');
+        function displayAnomalyFrames() {
+            const framesDiv = document.getElementById('anomalyFrames');
+            
             if (anomalies.length === 0) {
-                listDiv.innerHTML = 'No anomalies detected yet.';
+                framesDiv.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--cyber-green); grid-column: 1 / -1;">
+                        🛡️ NO ANOMALIES DETECTED<br>
+                        <small style="color: rgba(0, 255, 255, 0.7);">Monitoring for suspicious activity...</small>
+                    </div>
+                `;
                 return;
             }
 
             let html = '';
             anomalies.forEach((anomaly, index) => {
-                const threat = anomaly.threat_severity_index || 0.5;
+                const threat = anomaly.threat_severity_index || anomaly.threat_level || 0.5;
                 const threatClass = threat > 0.7 ? 'high-threat' : threat > 0.4 ? 'medium-threat' : 'low-threat';
+                const threatLabel = threat > 0.7 ? 'HIGH' : threat > 0.4 ? 'MEDIUM' : 'LOW';
+                const threatColor = threat > 0.7 ? 'threat-high' : threat > 0.4 ? 'threat-medium' : 'threat-low';
+                
+                const timestamp = anomaly.timestamp || anomaly.detected_at;
+                const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : 'Unknown';
                 
                 html += `
-                    <div class="anomaly-item ${threatClass}">
-                        <h4>Anomaly #${index + 1} - Threat Level: ${(threat * 100).toFixed(0)}%</h4>
-                        <p><strong>Time:</strong> ${anomaly.timestamp?.toFixed(2) || 'Unknown'}s (Frame ${anomaly.frame_count || 'Unknown'})</p>
-                        <p><strong>Details:</strong> ${anomaly.details || 'No details'}</p>
-                        ${anomaly.reasoning_summary ? `<p><strong>AI Analysis:</strong> ${anomaly.reasoning_summary}</p>` : ''}
+                    <div class="frame-card ${threatClass}">
+                        <div class="threat-indicator ${threatColor}">
+                            ${threatLabel}
+                        </div>
+                        
                         ${anomaly.frame_file ? `
-                            <img src="/${anomaly.frame_file}" alt="Anomaly frame" class="anomaly-frame" />
-                        ` : ''}
-                        <button onclick="jumpToTime(${anomaly.timestamp || 0})">View in Video</button>
-                        <button onclick="showFrameDetails(${index})">Show Details</button>
+                            <img src="/${anomaly.frame_file}" alt="Anomaly frame" class="anomaly-frame" 
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                            <div style="display: none; color: var(--cyber-red); text-align: center; padding: 20px;">
+                                ❌ Frame not available
+                            </div>
+                        ` : `
+                            <div style="background: var(--cyber-gray); border-radius: 8px; padding: 40px; text-align: center; color: var(--cyber-primary);">
+                                📷 FRAME #${anomaly.frame_count || index + 1}
+                            </div>
+                        `}
+                        
+                        <div class="frame-info">
+                            <div style="color: var(--cyber-yellow); font-weight: 600; margin-bottom: 10px;">
+                                🚨 ANOMALY #${index + 1} - ${(threat * 100).toFixed(0)}% THREAT
+                            </div>
+                            
+                            <div style="margin-bottom: 8px;">
+                                <strong style="color: var(--cyber-blue);">⏰ Time:</strong> ${timeStr}
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <strong style="color: var(--cyber-blue);">🎞️ Frame:</strong> ${anomaly.frame_count || 'Unknown'}
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <strong style="color: var(--cyber-blue);">📊 Scores:</strong> 
+                                V:${((anomaly.visual_score || 0.5) * 100).toFixed(0)}% 
+                                A:${((anomaly.audio_score || 0.5) * 100).toFixed(0)}%
+                            </div>
+                            
+                            ${anomaly.details ? `
+                                <div style="margin: 10px 0; padding: 8px; background: rgba(26, 26, 26, 0.7); border-radius: 6px;">
+                                    <strong style="color: var(--cyber-purple);">📝 Detection:</strong><br>
+                                    <span style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem;">${anomaly.details}</span>
+                                </div>
+                            ` : ''}
+                            
+                            ${anomaly.reasoning_summary ? `
+                                <div style="margin: 10px 0; padding: 8px; background: rgba(136, 68, 255, 0.1); border-radius: 6px; border-left: 3px solid var(--cyber-purple);">
+                                    <strong style="color: var(--cyber-purple);">🤖 AI Analysis:</strong><br>
+                                    <span style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem;">${anomaly.reasoning_summary}</span>
+                                </div>
+                            ` : ''}
+                            
+                            <div style="margin-top: 15px;">
+                                <button class="cyber-btn info-btn" onclick="showFrameDetails(${index})" style="width: 100%; margin: 2px 0;">
+                                    🔍 FULL ANALYSIS
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 `;
             });
-            listDiv.innerHTML = html;
+            
+            framesDiv.innerHTML = html;
         }
 
-        function jumpToTime(timestamp) {
-            const video = document.getElementById('videoPlayer');
-            if (currentVideoFile && video) {
-                video.src = `/${currentVideoFile}`;
-                video.style.display = 'block';
-                video.currentTime = timestamp;
-                video.play();
-            } else {
-                alert('No video loaded. Please load a recording first.');
-            }
-        }
+        function showFrameDetails(index) {
+            const anomaly = anomalies[index];
+            const details = `
+🚨 COMPREHENSIVE ANOMALY ANALYSIS #${index + 1}
 
-        function loadLatestVideo() {
-            if (currentVideoFile) {
-                const video = document.getElementById('videoPlayer');
-                video.src = `/${currentVideoFile}`;
-                video.style.display = 'block';
-            } else {
-                alert('No video recording available. Start monitoring first.');
-            }
-        }
+🎞️ FRAME INFORMATION:
+   • Frame Number: ${anomaly.frame_count || 'Unknown'}
+   • Timestamp: ${anomaly.timestamp ? anomaly.timestamp.toFixed(2) + 's' : 'Unknown'}
+   • Detection Time: ${anomaly.detected_at ? new Date(anomaly.detected_at).toLocaleString() : 'Unknown'}
 
-        function jumpToAnomaly() {
-            if (anomalies.length > 0) {
-                const lastAnomaly = anomalies[anomalies.length - 1];
-                jumpToTime(lastAnomaly.timestamp || 0);
-            } else {
-                alert('No anomalies detected yet.');
-            }
+📊 THREAT ASSESSMENT BREAKDOWN:
+   • Overall Threat Level: ${((anomaly.threat_severity_index || anomaly.threat_level || 0.5) * 100).toFixed(0)}%
+   • Visual Analysis Score: ${((anomaly.visual_score || 0.5) * 100).toFixed(0)}%
+   • Audio Analysis Score: ${((anomaly.audio_score || 0.5) * 100).toFixed(0)}%
+   • Multimodal Agreement: ${((anomaly.multimodal_agreement || 0.5) * 100).toFixed(0)}%
+   • Text Alignment Score: ${((anomaly.text_alignment_score || 0.5) * 100).toFixed(0)}%
+
+📁 FILE REFERENCES:
+   • Video Recording: ${anomaly.video_file || 'Not available'}
+   • Anomaly Frame: ${anomaly.frame_file || 'Not available'}
+
+📝 DETECTION ANALYSIS:
+   • Tier 1 Detection: ${anomaly.details || 'No details available'}
+   • AI Reasoning: ${anomaly.reasoning_summary || 'No AI analysis performed'}
+
+🔧 TECHNICAL DATA:
+   • Session ID: ${anomaly.session_id || 'Unknown'}
+   • Processing Pipeline: ${anomaly.pipeline || 'Standard'}
+   • Model Version: Mixtral-8x7B (Enhanced)
+            `.trim();
+            
+            alert(details);
         }
 
         function refreshAnomalies() {
-            fetch('/anomaly_events')
+            fetch('/anomaly_events?username=dashboard_user')
                 .then(response => response.json())
                 .then(data => {
-                    anomalies = data.anomaly_events || [];
-                    displayAnomalies();
+                    if (data.anomaly_events && Array.isArray(data.anomaly_events)) {
+                        anomalies = data.anomaly_events.slice(0, 20);
+                        displayAnomalyFrames();
+                        anomalyCount = anomalies.length;
+                        updateStats();
+                        console.log(`✅ Loaded ${anomalies.length} anomalies from backend`);
+                    }
                 })
                 .catch(error => {
-                    console.error('Error fetching anomalies:', error);
+                    console.log('ℹ️ Could not fetch anomalies:', error.message);
                 });
+        }
+
+        function clearAnomalies() {
+            if (confirm('🗑️ Clear all anomaly records from the display?')) {
+                anomalies = [];
+                anomalyCount = 0;
+                displayAnomalyFrames();
+                updateStats();
+            }
         }
 
         function toggleStreamDisplay() {
             const streamImg = document.getElementById('liveVideoStream');
             if (streamImg.style.display === 'none') {
                 streamImg.style.display = 'block';
-                streamImg.src = '/video_stream?' + new Date().getTime(); // Force refresh
+                streamImg.src = '/video_stream?' + new Date().getTime();
             } else {
                 streamImg.style.display = 'none';
             }
@@ -315,37 +989,110 @@
 
         function restartVideoStream() {
             const streamImg = document.getElementById('liveVideoStream');
-            streamImg.src = '/video_stream?' + new Date().getTime(); // Force refresh with timestamp
+            streamImg.src = '/video_stream?' + new Date().getTime();
+            console.log('🔄 Video stream refreshed');
+        }
+
+        function exportData() {
+            if (anomalies.length === 0) {
+                alert('⚠️ No anomaly data to export');
+                return;
+            }
+            
+            const exportData = {
+                session_info: {
+                    start_time: sessionStartTime ? new Date(sessionStartTime).toISOString() : null,
+                    frames_processed: frameCount,
+                    anomalies_detected: anomalyCount,
+                    video_file: currentVideoFile
+                },
+                anomalies: anomalies
+            };
+            
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `anomaly_session_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function showSystemStats() {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => {
+                    const stats = `
+🖥️ SYSTEM STATUS REPORT
+
+📊 DATABASE STATUS:
+   • MongoDB Connected: ${data.mongodb_connected ? '✅ YES' : '❌ NO'}
+   • Total Stored Anomalies: ${data.total_stored_anomalies || 0}
+   • Total Sessions: ${data.total_sessions || 0}
+
+⚡ PERFORMANCE METRICS:
+   • Current Status: ${data.current_status || 'Unknown'}
+   • System Uptime: ${sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) + 's' : 'N/A'}
+
+🔧 CURRENT SESSION:
+   • Frames Processed: ${frameCount}
+   • Anomalies Detected: ${anomalyCount}
+   • Active Video: ${currentVideoFile || 'None'}
+                    `.trim();
+                    
+                    alert(stats);
+                })
+                .catch(error => {
+                    alert('❌ Could not fetch system stats: ' + error.message);
+                });
+        }
+
+        function playAlertSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.1);
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
+                
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (error) {
+                console.log('Alert sound not available:', error);
+            }
         }
 
         // Auto-refresh video stream every 30 seconds to prevent stale streams
         setInterval(() => {
-            const streamImg = document.getElementById('liveVideoStream');
-            if (streamImg.style.display !== 'none') {
-                restartVideoStream();
+            if (isMonitoring) {
+                const streamImg = document.getElementById('liveVideoStream');
+                if (streamImg.style.display !== 'none') {
+                    restartVideoStream();
+                }
             }
         }, 30000);
 
-        function showFrameDetails(index) {
-            const anomaly = anomalies[index];
-            alert(`
-Anomaly Details:
-- Frame: ${anomaly.frame_count}
-- Timestamp: ${anomaly.timestamp?.toFixed(2)}s
-- Threat Level: ${((anomaly.threat_severity_index || 0.5) * 100).toFixed(0)}%
-- Visual Score: ${((anomaly.visual_score || 0.5) * 100).toFixed(0)}%
-- Audio Score: ${((anomaly.audio_score || 0.5) * 100).toFixed(0)}%
-- Video File: ${anomaly.video_file}
-- Frame File: ${anomaly.frame_file}
-            `);
-        }
-
-        // Auto-refresh anomalies every 5 seconds when monitoring
+        // Auto-refresh anomalies every 10 seconds when monitoring
         setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (isMonitoring) {
                 refreshAnomalies();
             }
-        }, 5000);
+        }, 10000);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (ws) {
+                ws.close(1000, 'Page unloading');
+            }
+        });
     </script>
 </body>
 </html>

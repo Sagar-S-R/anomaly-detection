@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import json
 import time
+import traceback
 from collections import deque
 
 # Global variables for smoothing/easing - simplified approach

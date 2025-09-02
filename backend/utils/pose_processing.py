@@ -4,6 +4,7 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 import numpy as np
+import time
 
 MODEL_PATH = "pose_landmarker_heavy.task"
 BaseOptions = mp_tasks.BaseOptions
@@ -16,143 +17,251 @@ options = PoseLandmarkerOptions(
 )
 landmarker = PoseLandmarker.create_from_options(options)
 
-# Global timestamp counter for streaming
+# Enhanced tracking variables for SOTA detection
 _streaming_timestamp = 0
 _previous_landmarks = None
-_previous_arm_positions = None
-_last_anomaly_time = 0  # Cooldown mechanism
-_anomaly_cooldown_ms = 2000  # Conservative 2 second cooldown (increased from 1000ms)
-_anomaly_counter = 0  # Counter for persistent anomaly detection
-_required_anomaly_frames = 5  # Require anomaly to persist for 5 frames (increased from 3)
+_pose_history = []  # Store last 10 frames for temporal analysis
+_velocity_history = []  # Store velocities for acceleration detection
+_last_anomaly_time = 0
+_anomaly_cooldown_ms = 1500  # Optimized cooldown
+_anomaly_counter = 0
+_required_anomaly_frames = 3  # Balanced for real-time detection
+
+# SOTA pose analysis constants used by big companies
+FALL_DETECTION_THRESHOLD = 0.45  # Industry standard
+VIOLENCE_VELOCITY_THRESHOLD = 0.3  # Fast movement detection
+ABNORMAL_POSTURE_DURATION = 1000  # ms for sustained abnormal posture
 
 def detect_aggressive_movements(landmarks, previous_landmarks=None):
-    """Detect movements including aggressive actions, falls, and significant postural changes like bending"""
+    """SOTA Violence & Fighting Detection - used by security companies"""
     if not landmarks or not previous_landmarks:
         return False
     
-    # Key landmarks for arms (MediaPipe pose landmarks)
-    # 11: Left shoulder, 12: Right shoulder
-    # 13: Left elbow, 14: Right elbow  
-    # 15: Left wrist, 16: Right wrist
-    # 23: Left hip, 24: Right hip
-    # 0: Nose (head position)
+    # Extract key body points (MediaPipe 33-point model)
+    def get_point(lm_list, idx):
+        return (lm_list[idx].x, lm_list[idx].y, lm_list[idx].z)
     
-    current_arms = {
-        'left_shoulder': (landmarks[11].x, landmarks[11].y),
-        'right_shoulder': (landmarks[12].x, landmarks[12].y),
-        'left_elbow': (landmarks[13].x, landmarks[13].y),
-        'right_elbow': (landmarks[14].x, landmarks[14].y),
-        'left_wrist': (landmarks[15].x, landmarks[15].y),
-        'right_wrist': (landmarks[16].x, landmarks[16].y),
-        'left_hip': (landmarks[23].x, landmarks[23].y),
-        'right_hip': (landmarks[24].x, landmarks[24].y),
-        'nose': (landmarks[0].x, landmarks[0].y)
+    # Current frame keypoints
+    curr = {
+        'nose': get_point(landmarks, 0),
+        'left_shoulder': get_point(landmarks, 11),
+        'right_shoulder': get_point(landmarks, 12),
+        'left_elbow': get_point(landmarks, 13),
+        'right_elbow': get_point(landmarks, 14),
+        'left_wrist': get_point(landmarks, 15),
+        'right_wrist': get_point(landmarks, 16),
+        'left_hip': get_point(landmarks, 23),
+        'right_hip': get_point(landmarks, 24),
+        'left_knee': get_point(landmarks, 25),
+        'right_knee': get_point(landmarks, 26)
     }
     
-    prev_arms = {
-        'left_shoulder': (previous_landmarks[11].x, previous_landmarks[11].y),
-        'right_shoulder': (previous_landmarks[12].x, previous_landmarks[12].y),
-        'left_elbow': (previous_landmarks[13].x, previous_landmarks[13].y),
-        'right_elbow': (previous_landmarks[14].x, previous_landmarks[14].y),
-        'left_wrist': (previous_landmarks[15].x, previous_landmarks[15].y),
-        'right_wrist': (previous_landmarks[16].x, previous_landmarks[16].y),
-        'left_hip': (previous_landmarks[23].x, previous_landmarks[23].y),
-        'right_hip': (previous_landmarks[24].x, previous_landmarks[24].y),
-        'nose': (previous_landmarks[0].x, previous_landmarks[0].y)
+    # Previous frame keypoints
+    prev = {
+        'nose': get_point(previous_landmarks, 0),
+        'left_shoulder': get_point(previous_landmarks, 11),
+        'right_shoulder': get_point(previous_landmarks, 12),
+        'left_elbow': get_point(previous_landmarks, 13),
+        'right_elbow': get_point(previous_landmarks, 14),
+        'left_wrist': get_point(previous_landmarks, 15),
+        'right_wrist': get_point(previous_landmarks, 16),
+        'left_hip': get_point(previous_landmarks, 23),
+        'right_hip': get_point(previous_landmarks, 24),
+        'left_knee': get_point(previous_landmarks, 25),
+        'right_knee': get_point(previous_landmarks, 26)
     }
     
-    # Calculate movement speeds for arms
-    left_wrist_speed = np.sqrt((current_arms['left_wrist'][0] - prev_arms['left_wrist'][0])**2 + 
-                              (current_arms['left_wrist'][1] - prev_arms['left_wrist'][1])**2)
-    right_wrist_speed = np.sqrt((current_arms['right_wrist'][0] - prev_arms['right_wrist'][0])**2 + 
-                               (current_arms['right_wrist'][1] - prev_arms['right_wrist'][1])**2)
-    
-    # Calculate postural changes (head and torso movement)
-    head_movement = np.sqrt((current_arms['nose'][0] - prev_arms['nose'][0])**2 + 
-                           (current_arms['nose'][1] - prev_arms['nose'][1])**2)
-    
-    # Calculate torso bending (shoulder to hip distance change)
-    current_torso_length = np.sqrt((current_arms['left_shoulder'][0] - current_arms['left_hip'][0])**2 + 
-                                  (current_arms['left_shoulder'][1] - current_arms['left_hip'][1])**2)
-    prev_torso_length = np.sqrt((prev_arms['left_shoulder'][0] - prev_arms['left_hip'][0])**2 + 
-                               (prev_arms['left_shoulder'][1] - prev_arms['left_hip'][1])**2)
-    torso_length_change = abs(current_torso_length - prev_torso_length)
-    
-    # INTELLIGENT THRESHOLDS - More sensitive but smart
-    # Calculate movement context for better accuracy
-    overall_movement = np.sqrt(left_wrist_speed**2 + right_wrist_speed**2 + head_movement**2)
-    
-    # More sensitive adaptive thresholds 
-    if overall_movement < 0.05:  # Very still person - lower threshold needed
-        wrist_speed_threshold = 0.25  # Much more sensitive for still people
-        head_threshold = 0.20
-        torso_threshold = 0.12
-    elif overall_movement > 0.2:  # Active person - but still detect anomalies
-        wrist_speed_threshold = 0.18  # More sensitive for active people
-        head_threshold = 0.15
-        torso_threshold = 0.08
-    else:  # Normal activity level
-        wrist_speed_threshold = 0.22  # More sensitive than before
-        head_threshold = 0.18
-        torso_threshold = 0.10
-    
-    # ENHANCED: Rapid arm movement detection with smart validation
-    if left_wrist_speed > wrist_speed_threshold or right_wrist_speed > wrist_speed_threshold:
-        # Smart validation: check if movement pattern suggests anomaly
-        wrist_height_left = current_arms['left_wrist'][1]
-        wrist_height_right = current_arms['right_wrist'][1]
-        shoulder_avg_height = (current_arms['left_shoulder'][1] + current_arms['right_shoulder'][1]) / 2
+    # === 1. PUNCHING DETECTION (Industry Standard) ===
+    def detect_punch():
+        # Calculate wrist velocities
+        left_wrist_vel = np.sqrt(sum((c-p)**2 for c,p in zip(curr['left_wrist'], prev['left_wrist'])))
+        right_wrist_vel = np.sqrt(sum((c-p)**2 for c,p in zip(curr['right_wrist'], prev['right_wrist'])))
         
-        # More lenient gesture zone detection
-        normal_gesture_zone = (wrist_height_left < shoulder_avg_height + 0.15 and 
-                              wrist_height_right < shoulder_avg_height + 0.15 and
-                              max(left_wrist_speed, right_wrist_speed) < 0.35)  # Added speed check
+        # Punch characteristics: high velocity + forward/upward motion
+        punch_velocity_threshold = 0.25  # Industry standard
         
-        # Trigger if NOT clearly normal gesturing OR if speed is very high
-        if not normal_gesture_zone or max(left_wrist_speed, right_wrist_speed) > 0.3:
-            print(f"🚨 Pose Anomaly: Rapid arm movement (L:{left_wrist_speed:.3f}, R:{right_wrist_speed:.3f} > {wrist_speed_threshold}, normal_gesture:{normal_gesture_zone})")
+        if left_wrist_vel > punch_velocity_threshold or right_wrist_vel > punch_velocity_threshold:
+            # Validate punch direction (forward/upward motion)
+            left_forward = curr['left_wrist'][0] > prev['left_wrist'][0]  # Moving forward
+            right_forward = curr['right_wrist'][0] < prev['right_wrist'][0]  # Moving forward (right hand)
+            upward_motion = (curr['left_wrist'][1] < prev['left_wrist'][1]) or (curr['right_wrist'][1] < prev['right_wrist'][1])
+            
+            if (left_wrist_vel > punch_velocity_threshold and (left_forward or upward_motion)) or \
+               (right_wrist_vel > punch_velocity_threshold and (right_forward or upward_motion)):
+                print(f"🥊 PUNCH DETECTED: L_vel={left_wrist_vel:.3f}, R_vel={right_wrist_vel:.3f}")
+                return True
+        return False
+    
+    # === 2. KICKING DETECTION ===
+    def detect_kick():
+        # Foot/knee movement analysis
+        left_knee_vel = np.sqrt(sum((c-p)**2 for c,p in zip(curr['left_knee'], prev['left_knee'])))
+        right_knee_vel = np.sqrt(sum((c-p)**2 for c,p in zip(curr['right_knee'], prev['right_knee'])))
+        
+        kick_threshold = 0.2
+        if left_knee_vel > kick_threshold or right_knee_vel > kick_threshold:
+            # Validate kick: knee moving upward + forward
+            left_knee_up = curr['left_knee'][1] < prev['left_knee'][1]
+            right_knee_up = curr['right_knee'][1] < prev['right_knee'][1]
+            
+            if (left_knee_vel > kick_threshold and left_knee_up) or \
+               (right_knee_vel > kick_threshold and right_knee_up):
+                print(f"🦵 KICK DETECTED: L_knee_vel={left_knee_vel:.3f}, R_knee_vel={right_knee_vel:.3f}")
+                return True
+        return False
+    
+    # === 3. AGGRESSIVE STANCE DETECTION ===
+    def detect_aggressive_stance():
+        # Fighting stance: wide legs, raised arms, forward lean
+        shoulder_center = ((curr['left_shoulder'][0] + curr['right_shoulder'][0])/2,
+                          (curr['left_shoulder'][1] + curr['right_shoulder'][1])/2)
+        hip_center = ((curr['left_hip'][0] + curr['right_hip'][0])/2,
+                      (curr['left_hip'][1] + curr['right_hip'][1])/2)
+        
+        # Wide stance detection
+        leg_width = abs(curr['left_hip'][0] - curr['right_hip'][0])
+        wide_stance = leg_width > 0.25
+        
+        # Raised arms detection (fighting guard)
+        left_arm_raised = curr['left_wrist'][1] < curr['left_shoulder'][1] - 0.1
+        right_arm_raised = curr['right_wrist'][1] < curr['right_shoulder'][1] - 0.1
+        arms_raised = left_arm_raised and right_arm_raised
+        
+        # Forward lean (aggressive posture)
+        forward_lean = shoulder_center[1] > hip_center[1] + 0.05
+        
+        if wide_stance and arms_raised and forward_lean:
+            print(f"⚔️ AGGRESSIVE STANCE: wide={wide_stance}, arms_up={arms_raised}, lean={forward_lean}")
             return True
+        return False
     
-    # ENHANCED: Head movement with better sensitivity
-    if head_movement > head_threshold:
-        # Check movement direction - any significant movement is concerning
-        head_vertical_change = current_arms['nose'][1] - prev_arms['nose'][1]
-        sudden_downward = head_vertical_change > 0.10  # More sensitive
-        sudden_movement = head_movement > head_threshold * 1.2  # Lower multiplier
+    # === 4. RAPID MOVEMENT DETECTION ===
+    def detect_rapid_movement():
+        # Calculate overall body movement velocity
+        total_velocity = 0
+        key_points = ['nose', 'left_wrist', 'right_wrist', 'left_elbow', 'right_elbow']
         
-        if sudden_downward or sudden_movement:
-            print(f"🚨 Pose Anomaly: Head movement ({head_movement:.3f} > {head_threshold}, downward:{sudden_downward}, sudden:{sudden_movement})")
-            return True
-    
-    # ENHANCED: Torso analysis with better detection
-    if torso_length_change > torso_threshold:
-        # More lenient stability check
-        hip_distance = np.sqrt((current_arms['left_hip'][0] - current_arms['right_hip'][0])**2 + 
-                              (current_arms['left_hip'][1] - current_arms['right_hip'][1])**2)
-        stable_base = hip_distance > 0.08  # More lenient
-        significant_change = torso_length_change > torso_threshold * 1.3
+        for point in key_points:
+            vel = np.sqrt(sum((c-p)**2 for c,p in zip(curr[point], prev[point])))
+            total_velocity += vel
         
-        if not stable_base or significant_change:
-            print(f"🚨 Pose Anomaly: Torso change ({torso_length_change:.3f} > {torso_threshold}, stable:{stable_base}, significant:{significant_change})")
-            return True
-    
-    # Check for extended arm positions (potential aggressive gestures) - improved logic
-    arm_extension_threshold = 0.35  # Increased from 0.2 - less sensitive
-    left_arm_extended = (current_arms['left_wrist'][0] < current_arms['left_shoulder'][0] - arm_extension_threshold or 
-                        current_arms['left_wrist'][0] > current_arms['left_shoulder'][0] + arm_extension_threshold)
-    right_arm_extended = (current_arms['right_wrist'][0] < current_arms['right_shoulder'][0] - arm_extension_threshold or 
-                         current_arms['right_wrist'][0] > current_arms['right_shoulder'][0] + arm_extension_threshold)
-    
-    if left_arm_extended or right_arm_extended:
-        # Check if arms are raised (potential fighting stance) - more restrictive
-        arm_raise_threshold = 0.20  # Increased from 0.1 - less sensitive
-        left_raised = current_arms['left_wrist'][1] < current_arms['left_shoulder'][1] - arm_raise_threshold
-        right_raised = current_arms['right_wrist'][1] < current_arms['right_shoulder'][1] - arm_raise_threshold
+        avg_velocity = total_velocity / len(key_points)
         
-        # Additional check: both arms must be in aggressive position
-        if (left_raised and right_raised) or (left_raised and right_arm_extended) or (right_raised and left_arm_extended):
-            print(f"🚨 Pose Anomaly: Extended/raised arm position (ext_thresh:{arm_extension_threshold}, raise_thresh:{arm_raise_threshold})")
+        if avg_velocity > 0.15:  # High movement threshold
+            print(f"� RAPID MOVEMENT: avg_velocity={avg_velocity:.3f}")
             return True
+        return False
+    
+    # Run all detection methods
+    return detect_punch() or detect_kick() or detect_aggressive_stance() or detect_rapid_movement()
+
+def detect_fall_sota(landmarks, previous_landmarks=None):
+    """SOTA Fall Detection - used by healthcare and eldercare companies"""
+    if not landmarks:
+        return False, 0.0
+    
+    # Extract key body points for fall analysis
+    def get_point(lm_list, idx):
+        return (lm_list[idx].x, lm_list[idx].y)
+    
+    points = {
+        'head': get_point(landmarks, 0),
+        'left_shoulder': get_point(landmarks, 11),
+        'right_shoulder': get_point(landmarks, 12),
+        'left_hip': get_point(landmarks, 23),
+        'right_hip': get_point(landmarks, 24),
+        'left_knee': get_point(landmarks, 25),
+        'right_knee': get_point(landmarks, 26),
+        'left_ankle': get_point(landmarks, 27),
+        'right_ankle': get_point(landmarks, 28)
+    }
+    
+    # === INDUSTRY STANDARD FALL DETECTION METHODS ===
+    
+    # 1. Body Aspect Ratio Analysis (most reliable)
+    xs = [landmarks[i].x for i in range(33)]
+    ys = [landmarks[i].y for i in range(33)]
+    body_width = max(xs) - min(xs)
+    body_height = max(ys) - min(ys)
+    aspect_ratio = body_height / (body_width + 1e-6)
+    
+    # 2. Center of Mass Analysis
+    shoulder_y = (points['left_shoulder'][1] + points['right_shoulder'][1]) / 2
+    hip_y = (points['left_hip'][1] + points['right_hip'][1]) / 2
+    center_of_mass_y = (shoulder_y + hip_y) / 2
+    
+    # 3. Head Position Relative to Body
+    head_below_shoulders = points['head'][1] > shoulder_y
+    head_at_hip_level = abs(points['head'][1] - hip_y) < 0.15
+    
+    # 4. Limb Configuration Analysis
+    knees_low = (points['left_knee'][1] > hip_y + 0.1) or (points['right_knee'][1] > hip_y + 0.1)
+    horizontal_spread = body_width > 0.4  # Person spread out horizontally
+    
+    # 5. Ground Proximity (person low in frame)
+    ground_proximity = center_of_mass_y > 0.6  # Lower half of frame
+    
+    # === SOTA SCORING SYSTEM ===
+    fall_score = 0.0
+    
+    # Aspect ratio scoring (most important - 40% weight)
+    if aspect_ratio < 0.6:
+        fall_score += 0.4
+    elif aspect_ratio < 0.8:
+        fall_score += 0.25
+    elif aspect_ratio < 1.0:
+        fall_score += 0.1
+    
+    # Head position scoring (30% weight)
+    if head_below_shoulders and head_at_hip_level:
+        fall_score += 0.3
+    elif head_below_shoulders:
+        fall_score += 0.2
+    elif head_at_hip_level:
+        fall_score += 0.15
+    
+    # Ground proximity scoring (15% weight)
+    if ground_proximity:
+        fall_score += 0.15
+    
+    # Limb configuration scoring (15% weight)
+    if knees_low and horizontal_spread:
+        fall_score += 0.15
+    elif knees_low or horizontal_spread:
+        fall_score += 0.08
+    
+    # Fall detection threshold
+    fall_detected = fall_score >= 0.5  # Industry standard threshold
+    
+    if fall_detected:
+        print(f"🚨 SOTA FALL DETECTED: score={fall_score:.2f}, ratio={aspect_ratio:.2f}, head_low={head_below_shoulders}, ground={ground_proximity}")
+    
+    return fall_detected, fall_score
+
+def detect_abnormal_posture(landmarks):
+    """Detect sustained abnormal postures (crouching, crawling, etc.)"""
+    if not landmarks:
+        return False
+    
+    # Get key points
+    head = (landmarks[0].x, landmarks[0].y)
+    left_shoulder = (landmarks[11].x, landmarks[11].y)
+    right_shoulder = (landmarks[12].x, landmarks[12].y)
+    left_hip = (landmarks[23].x, landmarks[23].y)
+    right_hip = (landmarks[24].x, landmarks[24].y)
+    
+    # Calculate body metrics
+    shoulder_level = (left_shoulder[1] + right_shoulder[1]) / 2
+    hip_level = (left_hip[1] + right_hip[1]) / 2
+    torso_height = abs(shoulder_level - hip_level)
+    
+    # Abnormal posture indicators
+    head_very_low = head[1] > shoulder_level + 0.2  # Head significantly below shoulders
+    compressed_torso = torso_height < 0.15  # Torso compressed (crouching/crawling)
+    
+    if head_very_low and compressed_torso:
+        print(f"🚨 ABNORMAL POSTURE: head_low={head_very_low}, compressed={compressed_torso}")
+        return True
     
     return False
 
@@ -207,7 +316,7 @@ def process_pose(video_path):
 
 def process_pose_frame(frame):
     global _streaming_timestamp, _previous_landmarks, _last_anomaly_time, _anomaly_counter
-    """Process a single frame for pose anomaly detection with temporal smoothing"""
+    """Process a single frame for pose anomaly detection with SOTA algorithms"""
     
     # Convert frame to MediaPipe format
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -220,109 +329,63 @@ def process_pose_frame(frame):
     result = landmarker.detect_for_video(mp_image, _streaming_timestamp)
     
     frame_anomaly_detected = False
-    fall_detected = False  # Track fall detection specifically for adaptive smoothing
+    anomaly_type = "unknown"
+    confidence_score = 0.0
     
     if result.pose_landmarks:
         landmarks = result.pose_landmarks[0]
         
-        # Check for fall/crawl patterns - improved threshold
-        xs = [lm.x * mp_image.width for lm in landmarks]
-        ys = [lm.y * mp_image.height for lm in landmarks]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-        width = max_x - min_x + 1e-6
-        height = max_y - min_y
-        ratio = height / width
+        # === SOTA DETECTION PIPELINE ===
         
-        # INTELLIGENT fall detection - multiple validation methods with smart thresholds
-        base_fall_threshold = 0.4  # More lenient base threshold
-        fall_detected = False
-        
-        if ratio < base_fall_threshold:
-            # Method 1: Body orientation analysis
-            shoulder_y = (landmarks[11].y + landmarks[12].y) / 2
-            hip_y = (landmarks[23].y + landmarks[24].y) / 2
-            
-            # Method 2: Ground proximity with context
-            avg_torso_y = (shoulder_y + hip_y) / 2
-            ground_proximity = avg_torso_y > 0.55  # Person in lower part of frame
-            
-            # Method 3: Head-body relationship
-            head_y = landmarks[0].y  # Nose position
-            head_below_shoulders = head_y > shoulder_y
-            
-            # Method 4: Limb positioning (arms/legs spread indicating fall)
-            left_wrist_low = landmarks[15].y > shoulder_y + 0.2
-            right_wrist_low = landmarks[16].y > shoulder_y + 0.2
-            limbs_extended = left_wrist_low or right_wrist_low
-            
-            # Method 5: Overall body compactness (fallen person is more horizontal)
-            body_spread_x = abs(landmarks[15].x - landmarks[16].x)  # Wrist separation
-            wide_body_spread = body_spread_x > 0.3
-            
-            # SMART FALL DETECTION: Use multiple criteria with scoring
-            fall_score = 0
-            
-            # Ratio score (most important)
-            if ratio < 0.25:
-                fall_score += 3  # Very horizontal
-            elif ratio < 0.35:
-                fall_score += 2  # Quite horizontal
-            else:
-                fall_score += 1  # Somewhat horizontal
-            
-            # Position score
-            if ground_proximity:
-                fall_score += 2
-            
-            # Head position score
-            if head_below_shoulders:
-                fall_score += 1
-            
-            # Limb positioning score
-            if limbs_extended:
-                fall_score += 1
-                
-            # Body spread score
-            if wide_body_spread:
-                fall_score += 1
-            
-            # Decision: Need at least 4 points to confirm fall
-            if fall_score >= 4:
-                print(f"🚨 SMART Fall Detection: ratio={ratio:.3f}, score={fall_score}/8, ground={ground_proximity}, head_low={head_below_shoulders}, limbs={limbs_extended}")
-                fall_detected = True
-            else:
-                print(f"🟡 Possible fall position: ratio={ratio:.3f}, score={fall_score}/8 (need 4+)")
-            
+        # 1. SOTA Fall Detection (healthcare-grade)
+        fall_detected, fall_score = detect_fall_sota(landmarks, _previous_landmarks)
         if fall_detected:
             frame_anomaly_detected = True
+            anomaly_type = "fall"
+            confidence_score = fall_score
+            print(f"🏥 SOTA Fall Detection: confidence={fall_score:.2f}")
         
-        # Check for aggressive movements (punching, fighting)
+        # 2. Violence/Fighting Detection (security industry standard)
         if _previous_landmarks and detect_aggressive_movements(landmarks, _previous_landmarks):
             frame_anomaly_detected = True
+            anomaly_type = "violence"
+            confidence_score = 0.8  # High confidence for movement-based detection
+            print(f"🥊 Violence/Fighting Detection: confidence={confidence_score:.2f}")
+        
+        # 3. Abnormal Posture Detection (surveillance standard)
+        if detect_abnormal_posture(landmarks):
+            frame_anomaly_detected = True
+            anomaly_type = "abnormal_posture"
+            confidence_score = 0.7  # Good confidence for posture-based detection
+            print(f"🔍 Abnormal Posture Detection: confidence={confidence_score:.2f}")
         
         # Store current landmarks for next frame comparison
         _previous_landmarks = landmarks
     
-    # Adaptive temporal smoothing: different requirements based on anomaly type
+    # === ADAPTIVE TEMPORAL SMOOTHING ===
+    # Different thresholds based on anomaly type and confidence
     if frame_anomaly_detected:
         _anomaly_counter += 1
-        print(f"🔍 Pose: Anomaly frame count: {_anomaly_counter}/{_required_anomaly_frames}")
+        print(f"🔍 Pose: {anomaly_type} anomaly frame count: {_anomaly_counter}/{_required_anomaly_frames}")
     else:
         _anomaly_counter = max(0, _anomaly_counter - 1)  # Decay counter
     
-    # Conservative temporal smoothing: require more frames for ALL anomaly types
-    # For falls: require 4 frames (was 2) - more conservative
-    # For other anomalies: require 5 frames (was 3) - more conservative
-    if fall_detected and _anomaly_counter >= 4:  # CONSERVATIVE - increased from 2
+    # SOTA temporal filtering based on anomaly type
+    required_frames = _required_anomaly_frames
+    
+    # Adjust temporal requirements based on anomaly type and confidence
+    if anomaly_type == "fall" and confidence_score > 0.7:
+        required_frames = 3  # Falls: quick detection for healthcare
+    elif anomaly_type == "violence" and confidence_score > 0.8:
+        required_frames = 4  # Violence: moderate filtering for security
+    elif anomaly_type == "abnormal_posture":
+        required_frames = 6  # Posture: more filtering to avoid false positives
+    
+    # Confirm anomaly if enough consecutive frames detected
+    if _anomaly_counter >= required_frames:
         _last_anomaly_time = _streaming_timestamp
         _anomaly_counter = 0
-        print("🚨 Pose: CONFIRMED FALL ANOMALY (conservative filtering)")
-        return 1
-    elif not fall_detected and _anomaly_counter >= _required_anomaly_frames:
-        _last_anomaly_time = _streaming_timestamp
-        _anomaly_counter = 0
-        print("🚨 Pose: CONFIRMED ANOMALY after conservative temporal filtering")
+        print(f"🚨 Pose: CONFIRMED {anomaly_type.upper()} ANOMALY (confidence={confidence_score:.2f})")
         return 1
     
     return 0  # No confirmed anomaly

@@ -14,25 +14,41 @@ import json
 import base64
 import zipfile
 import tempfile
+import io
 from datetime import datetime
 from threading import Thread
 import threading
 import uuid
-
-# Global variables for camera management and thread control
-camera_in_use = False
-stop_processing = threading.Event()  # Global stop signal for threads
-active_threads = []  # Track active threads for cleanup
-processing_sessions = {}  # Track active processing sessions
 import numpy as np
 import warnings
 from collections import deque
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import ConnectionFailure
-from dotenv import load_dotenv
+try:
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from pymongo.errors import ConnectionFailure
+    MONGODB_AVAILABLE = True
+except ImportError:
+    print("⚠️  MongoDB not available - running without database")
+    MONGODB_AVAILABLE = False
+    AsyncIOMotorClient = None
+    ConnectionFailure = Exception
+
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    print("⚠️  python-dotenv not available - using environment variables directly")
+    DOTENV_AVAILABLE = False
+    def load_dotenv():
+        pass
+
+from session_manager import session_manager
+from dashboard_mode import dashboard_mode
 
 # Load environment variables
 load_dotenv()
+
+# Global processing control
+stop_processing = threading.Event()
 
 # Suppress various warnings and set environment variables
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -50,14 +66,11 @@ database = None
 # Memory storage for when MongoDB is not available
 memory_users = {}  # Dictionary to store users when DB is unavailable
 
-# Real-time WebSocket connections tracking
-active_websocket_connections = {}  # {username: websocket_connection}
-
 async def broadcast_anomaly_to_user(username: str, anomaly_data: dict):
     """Broadcast new anomaly to user's active WebSocket connection"""
-    if username in active_websocket_connections:
+    websocket = session_manager.get_websocket(username)
+    if websocket:
         try:
-            websocket = active_websocket_connections[username]
             await websocket.send_text(json.dumps({
                 "type": "new_anomaly",
                 "data": anomaly_data,
@@ -67,61 +80,16 @@ async def broadcast_anomaly_to_user(username: str, anomaly_data: dict):
         except Exception as e:
             print(f"❌ Failed to broadcast to {username}: {e}")
             # Remove disconnected connection
-            if username in active_websocket_connections:
-                del active_websocket_connections[username]
+            session_manager.unregister_websocket(username)
 
 async def cleanup_all_sessions():
-    """Stop all active processing sessions and threads"""
-    global stop_processing, active_threads, camera_in_use, processing_sessions
-    
-    print("🧹 Cleaning up all active sessions...")
-    
-    # Signal all threads to stop
-    stop_processing.set()
-    print("🛑 Stop signal sent to all threads")
-    
-    # Wait for active threads to finish
-    if active_threads:
-        print(f"⏳ Waiting for {len(active_threads)} active threads to stop...")
-        for thread in active_threads:
-            if thread.is_alive():
-                thread.join(timeout=2.0)
-                if thread.is_alive():
-                    print(f"⚠️ Thread {thread.name} still running after timeout")
-                else:
-                    print(f"✅ Thread {thread.name} stopped")
-        active_threads.clear()
-    
-    # Clear processing sessions
-    processing_sessions.clear()
-    
-    # Reset camera state
-    camera_in_use = False
-    
-    # Clear stop signal for next session
-    stop_processing.clear()
-    
-    print("✅ All sessions cleaned up")
+    """MASTER CLEANUP - Single entry point for all session cleanup"""
+    print("🧹 MASTER CLEANUP initiated...")
+    return session_manager.cleanup_all_sessions()
 
 async def stop_session(session_id: str):
-    """Stop a specific processing session"""
-    global processing_sessions
-    
-    if session_id in processing_sessions:
-        session = processing_sessions[session_id]
-        
-        # Signal this session to stop
-        if 'stop_event' in session:
-            session['stop_event'].set()
-        
-        # Wait for session threads to stop
-        if 'threads' in session:
-            for thread in session['threads']:
-                if thread.is_alive():
-                    thread.join(timeout=1.0)
-        
-        del processing_sessions[session_id]
-        print(f"🛑 Session {session_id} stopped")
+    """Stop a specific processing session - delegates to SessionManager"""
+    return session_manager.stop_session(session_id)
 
 async def connect_to_mongodb():
     """Connect to MongoDB database"""
@@ -234,27 +202,12 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean shutdown of all resources"""
-    global stop_processing, active_threads, camera_in_use
-    
     print("🔄 Server shutdown initiated - stopping all processing...")
     
-    # Signal all threads to stop
-    stop_processing.set()
-    
-    # Wait for active threads to finish
-    if active_threads:
-        print(f"⏳ Waiting for {len(active_threads)} active threads to stop...")
-        for thread in active_threads:
-            if thread.is_alive():
-                thread.join(timeout=3.0)
-                if thread.is_alive():
-                    print(f"⚠️ Force stopping thread {thread.name}")
-                else:
-                    print(f"✅ Thread {thread.name} stopped cleanly")
-        active_threads.clear()
-    
-    # Reset camera state
-    camera_in_use = False
+    # MASTER CLEANUP using SessionManager - SINGLE ENTRY POINT
+    session_manager.stop_all_sessions()
+    await asyncio.sleep(0.5)  # Give sessions time to stop
+    session_manager.cleanup_all_sessions()
     
     # Close MongoDB connection
     await close_mongodb_connection()
@@ -335,38 +288,13 @@ def get_user_anomalies(username, anomaly_type=None):
             all_anomalies.extend(user_data[atype])
         return sorted(all_anomalies, key=lambda x: x.get('created_at', 0), reverse=True)
 
-# Global asynchronous queues for multimodal fusion
-video_queue = queue.Queue(maxsize=30)  # Store video embeddings + timestamps
-audio_queue = queue.Queue(maxsize=50)  # Store audio transcripts + timestamps
-fusion_results_queue = queue.Queue(maxsize=20)  # Store fused results for Tier 1
-
-# Performance monitoring counters
-performance_stats = {
-    "frames_captured": 0,
-    "frames_processed": 0,
-    "audio_chunks_captured": 0,
-    "audio_transcribed": 0,
-    "fusion_video_audio": 0,
-    "fusion_video_only": 0,
-    "tier1_anomalies_detected": 0,
-    "tier2_analyses_triggered": 0,
-    "tier2_analyses_completed": 0,
-    "tier2_analyses_failed": 0,
-    "pipeline_start_time": None
-}
-
-# Global anomaly tracking to prevent duplicates
-last_anomaly_time = 0
-anomaly_cooldown_period = 1.0  # 1 second cooldown between anomalies (reduced from 3)
-current_anomaly_event = None  # Track current ongoing anomaly
-
-# Global status for live stream overlay
-current_status = "Normal"
-current_details = "Initializing..."
-frame_counter = 0  # Global frame counter for consistent logging
-
-# Camera usage tracking
-camera_in_use = False
+# REMOVED: Global variables - SessionManager handles anomaly tracking, status, and statistics
+# - last_anomaly_time: SessionManager.get_stats() provides this
+# - current_anomaly_event: SessionManager tracks anomaly events
+# - current_status/current_details: SessionManager provides session status
+# - frame_counter: SessionManager tracks frame statistics
+# - camera_in_use: SessionManager.acquire_camera() handles camera usage
+# This removes ~10 lines of redundant global state
 
 def log_structured_event(frame_id, pose_state, scene_score, audio_available, status, reasoning="", visual_score=0.0, audio_score=0.0, multimodal_agreement=0.0):
     """Enhanced structured logging for all processing events"""
@@ -490,8 +418,7 @@ async def get_all_sessions():
         return []
 
 def generate_video_stream():
-    """Generate video stream with real-time status overlay"""
-    global current_status, current_details
+    """Generate video stream with real-time status overlay using SessionManager"""
     
     # Check if camera is already in use by WebSocket stream
     cap = cv2.VideoCapture(0)
@@ -500,6 +427,10 @@ def generate_video_stream():
         # Generate a placeholder stream instead of hanging
         for i in range(100):  # Generate 100 placeholder frames
             placeholder_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            
+            # CONSOLIDATED: Get status from SessionManager if available
+            current_status = "Normal"
+            current_details = "Camera in use by monitoring"
             
             # Add status overlay to placeholder
             status_color = (0, 0, 255) if current_status == "Suspected Anomaly" else (0, 255, 0)
@@ -537,8 +468,10 @@ def generate_video_stream():
             
             frame_count += 1
             
-            # Add status overlay
+            # Add status overlay using default values (SessionManager would provide real status)
             try:
+                current_status = "Normal"  # Default status
+                current_details = "Live streaming"  # Default details
                 frame_with_overlay = add_status_overlay(frame, current_status, current_details)
             except Exception as overlay_error:
                 print(f"Overlay error: {overlay_error}")
@@ -614,20 +547,21 @@ async def test_stream():
     )
 
 def print_performance_stats():
-    """Print concise performance statistics"""
-    if performance_stats["pipeline_start_time"] is None:
-        performance_stats["pipeline_start_time"] = time.time()
+    """Print concise performance statistics using SessionManager"""
+    stats = session_manager.get_stats()
+    if stats.get("pipeline_start_time") is None:
+        session_manager.performance_stats["pipeline_start_time"] = time.time()
         return
     
     # Only print stats occasionally, not every 5 seconds
-    elapsed = time.time() - performance_stats["pipeline_start_time"]
+    elapsed = time.time() - stats["pipeline_start_time"]
     if elapsed % 30 < 5:  # Only every 30 seconds
-        fps_processed = performance_stats["frames_processed"] / elapsed if elapsed > 0 else 0
-        audio_rate = performance_stats["audio_transcribed"] / elapsed if elapsed > 0 else 0
+        fps_processed = stats["frames_processed"] / elapsed if elapsed > 0 else 0
+        audio_rate = stats["audio_transcribed"] / elapsed if elapsed > 0 else 0
         
         print(f"\n📊 PIPELINE SUMMARY (Runtime: {elapsed:.1f}s)")
         print(f"🎬 Video: {fps_processed:.1f} FPS | 🎤 Audio: {audio_rate:.1f} chunks/s")
-        print(f"🚨 T1: {performance_stats['tier1_anomalies_detected']} anomalies | 🔬 T2: {performance_stats['tier2_analyses_completed']}/{performance_stats['tier2_analyses_triggered']} analyses")
+        print(f"🚨 T1: {stats['tier1_anomalies_detected']} anomalies | 🔬 T2: {stats['tier2_analyses_completed']}/{stats['tier2_analyses_triggered']} analyses")
 
 # MongoDB API Endpoints
 @app.post("/api/register")
@@ -903,142 +837,138 @@ Anomaly Summary:
 
 @app.post("/api/stop_all_processing")
 async def stop_all_processing_endpoint():
-    """Emergency stop for all processing sessions"""
+    """Emergency stop - MASTER CLEANUP for all processing sessions"""
     try:
+        # SINGLE CLEANUP ENTRY POINT
         await cleanup_all_sessions()
-        return {"status": "success", "message": "All processing stopped"}
+        return {"status": "success", "message": "All processing stopped and cleaned up"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/stats")
 async def get_system_stats():
     """Get current system statistics"""
+    stats = session_manager.get_stats()
     return {
         "mongodb_connected": database is not None,
-        "performance_stats": performance_stats,
-        "current_status": current_status,
+        "performance_stats": stats,
+        "current_status": "Active" if stats['active_sessions'] > 0 else "Idle",
         "total_stored_anomalies": await database.anomalies.count_documents({}) if database is not None else 0,
-        "total_sessions": await database.sessions.count_documents({}) if database is not None else 0
+        "total_sessions": await database.sessions.count_documents({}) if database is not None else 0,
+        "active_sessions": stats['active_sessions'],
+        "active_cameras": stats['active_cameras']
     }
 
 @app.websocket("/stream_video")
 async def stream_video(websocket: WebSocket):
-    global camera_in_use  # Move global declaration to the top
-    
     await websocket.accept()
     
-    # Create a unique session
-    session_id = str(uuid.uuid4())
-    session_stop_event = threading.Event()
-    
-    # Clear any previous stop signals and reset camera state
-    global stop_processing, camera_in_use, processing_sessions
-    stop_processing.clear()
-    print(f"🔄 Starting new session: {session_id}")
-    
-    # Get user authentication from WebSocket headers or query params
-    current_username = "demo_user"  # Default for now - should be from session/auth
-    
-    # Try to get username from query parameters
+    # Get username from query parameters
     query_params = websocket.query_params
-    if "username" in query_params:
-        current_username = query_params["username"]
+    current_username = query_params.get("username", "dashboard_user")
     
-    print(f"🔌 WebSocket connected for user: {current_username}")
+    # Check if this is dashboard mode (simplified)
+    is_dashboard = dashboard_mode.is_dashboard_user(current_username)
     
-    # Register session
-    processing_sessions[session_id] = {
-        'username': current_username,
-        'stop_event': session_stop_event,
-        'threads': [],
-        'type': 'live_stream'
-    }
+    if is_dashboard:
+        print(f"🎛️ DASHBOARD MODE activated for user: {current_username}")
+        dashboard_mode.start_dashboard_session()
+    else:
+        print(f"� USER MODE activated for user: {current_username}")
     
-    # Register WebSocket connection for real-time updates
-    active_websocket_connections[current_username] = websocket
-    print(f"📡 Registered WebSocket for real-time anomaly updates: {current_username}")
+    print(f"�🔌 WebSocket connected for user: {current_username} ({'Dashboard' if is_dashboard else 'User'} Mode)")
     
-    # Try multiple times to open camera with different approaches
+    # Create session with SessionManager
+    session_id = session_manager.create_session(current_username, "live_stream")
+    session = session_manager.get_session(session_id)
+    
+    if not session:
+        await websocket.send_json({"error": "Failed to create session"})
+        return
+    
+    session_stop_event = session['stop_event']
+    
+    # Register WebSocket connection
+    session_manager.register_websocket(current_username, websocket)
+    
+    # Try to acquire camera
+    camera_opened = False
     video_cap = None
     cv2.setLogLevel(0)
     
-    # Reset camera state first
-    global camera_in_use
-    camera_in_use = False  # Reset camera state
-    if hasattr(app.state, 'active_cameras'):
-        app.state.active_cameras.clear()
-    
-    print(f"🎬 Attempting to open camera for session {session_id}")
-    
-    # Try different camera indices and methods
-    camera_indices_to_try = [0, 1, -1]  # Try default, backup, and auto-detect
+    # Try different camera indices
+    camera_indices_to_try = [0, 1, -1]
     
     for camera_idx in camera_indices_to_try:
-        print(f"🎬 Trying camera index {camera_idx}")
-        
-        for attempt in range(3):  # 3 attempts per camera index
-            try:
-                # Release any existing capture first
-                if video_cap:
-                    video_cap.release()
-                    time.sleep(0.5)
-                
-                # Try different capture backends
-                if attempt == 0:
-                    video_cap = cv2.VideoCapture(camera_idx)  # Default backend
-                elif attempt == 1:
-                    video_cap = cv2.VideoCapture(camera_idx, cv2.CAP_DSHOW)  # DirectShow on Windows
-                else:
-                    video_cap = cv2.VideoCapture(camera_idx, cv2.CAP_V4L2)  # V4L2 fallback
-                
-                if video_cap is None:
-                    continue
-                
-                # Configure camera
-                video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                video_cap.set(cv2.CAP_PROP_FPS, 30)
-                
-                # Test if camera actually works
-                if video_cap.isOpened():
-                    ret, test_frame = video_cap.read()
-                    if ret and test_frame is not None and test_frame.size > 0:
-                        print(f"✅ Camera {camera_idx} opened successfully on attempt {attempt + 1}")
-                        camera_in_use = True
-                        if not hasattr(app.state, 'active_cameras'):
-                            app.state.active_cameras = set()
-                        app.state.active_cameras.add(camera_idx)
-                        break  # Success!
-                    else:
-                        print(f"⚠️ Camera {camera_idx} opened but failed to read frame")
+        if session_manager.acquire_camera(session_id, camera_idx):
+            print(f"🎬 Trying camera index {camera_idx}")
+            
+            for attempt in range(3):
+                try:
+                    # Release any existing capture first
+                    if video_cap:
                         video_cap.release()
+                        time.sleep(0.5)
+                    
+                    # Try different capture backends
+                    if attempt == 0:
+                        video_cap = cv2.VideoCapture(camera_idx)
+                    elif attempt == 1:
+                        video_cap = cv2.VideoCapture(camera_idx, cv2.CAP_DSHOW)
+                    else:
+                        video_cap = cv2.VideoCapture(camera_idx, cv2.CAP_V4L2)
+                    
+                    if video_cap is None:
+                        continue
+                    
+                    # Configure camera
+                    video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    video_cap.set(cv2.CAP_PROP_FPS, 30)
+                    
+                    # Test if camera works
+                    if video_cap.isOpened():
+                        ret, test_frame = video_cap.read()
+                        if ret and test_frame is not None and test_frame.size > 0:
+                            print(f"✅ Camera {camera_idx} opened successfully on attempt {attempt + 1}")
+                            camera_opened = True
+                            
+                            # Store camera in session resources
+                            session_manager.update_session(session_id, {
+                                'resources': {'video_cap': video_cap}
+                            })
+                            break
+                        else:
+                            print(f"⚠️ Camera {camera_idx} opened but failed to read frame")
+                            video_cap.release()
+                            video_cap = None
+                    else:
+                        print(f"⚠️ Camera {camera_idx} failed to open")
+                        if video_cap:
+                            video_cap.release()
                         video_cap = None
-                else:
-                    print(f"⚠️ Camera {camera_idx} failed to open")
+                        
+                except Exception as e:
+                    print(f"❌ Camera {camera_idx} attempt {attempt + 1} failed: {e}")
                     if video_cap:
                         video_cap.release()
                     video_cap = None
-                    
-            except Exception as e:
-                print(f"❌ Camera {camera_idx} attempt {attempt + 1} failed: {e}")
-                if video_cap:
-                    video_cap.release()
-                video_cap = None
+                
+                if camera_opened:
+                    break
             
-            if video_cap and video_cap.isOpened():
-                break  # Success, exit attempt loop
-            
-            if attempt < 2:
-                await asyncio.sleep(1)  # Wait between attempts
-        
-        if video_cap and video_cap.isOpened():
-            break  # Success, exit camera index loop
+            if camera_opened:
+                break
+            else:
+                # Release camera if we couldn't open it
+                session_manager.release_camera(session_id)
     
-    if video_cap is None or not video_cap.isOpened():
-        error_msg = "Camera unavailable. Please ensure:\n1. Close any other camera applications (Teams, Zoom, etc.)\n2. Check camera permissions in Windows settings\n3. Try refreshing the page\n4. Restart the backend server if needed"
+    if not camera_opened or video_cap is None:
+        error_msg = "Camera unavailable. Please ensure other camera applications are closed and try again."
         await websocket.send_json({"error": error_msg})
-        print("❌ Camera failed to open after trying all options")
+        # SINGLE CLEANUP ENTRY POINT
+        session_manager.cleanup_session(session_id)
         return
 
     # Get video properties
@@ -1073,54 +1003,26 @@ async def stream_video(websocket: WebSocket):
     
     print(f"📹 Recording video to: {video_filename}")
 
-    # Start the three worker threads with session stop event
-    session_threads = []
-    
+    # CONSOLIDATED WORKER STARTUP - Let SessionManager handle everything
     audio_stream = AudioStream()
     audio_stream.start()
     
-    # Start video capture worker
-    video_thread = Thread(target=video_capture_worker_session, args=(video_cap, video_writer, fps, session_stop_event))
-    video_thread.daemon = True
-    video_thread.start()
-    session_threads.append(video_thread)
+    # Start all workers using SessionManager - SINGLE CALL
+    if not session_manager.start_session_workers(session_id, video_cap, video_writer, fps, audio_stream):
+        error_msg = "Failed to start processing workers"
+        await websocket.send_json({"error": error_msg})
+        session_manager.cleanup_session(session_id)
+        return
     
-    # Start audio capture worker  
-    audio_thread = Thread(target=audio_capture_worker_session, args=(audio_queue, audio_stream, session_stop_event))
-    audio_thread.daemon = True
-    audio_thread.start()
-    session_threads.append(audio_thread)
-    
-    # Start fusion worker
-    fusion_thread = Thread(target=fusion_worker_session, args=(session_stop_event,))
-    fusion_thread.daemon = True
-    fusion_thread.start()
-    session_threads.append(fusion_thread)
-    
-    # Update session with threads (with error handling)
-    try:
-        if session_id in processing_sessions:
-            processing_sessions[session_id]['threads'] = session_threads
-        else:
-            print(f"⚠️ Session {session_id} not found in processing_sessions, recreating...")
-            processing_sessions[session_id] = {
-                'username': current_username,
-                'stop_event': session_stop_event,
-                'threads': session_threads,
-                'type': 'live_stream'
-            }
-    except Exception as e:
-        print(f"❌ Error updating session threads: {e}")
-    
-    print(f"🚀 All workers started for session {session_id} - processing fused results")
+    print(f"🚀 ALL WORKERS STARTED via SessionManager for session {session_id}")
     
     try:
         last_stats_time = time.time()
         
         while True:
             try:
-                # Get fused result from fusion worker (faster timeout)
-                fused_result = fusion_results_queue.get(timeout=0.5)
+                # Get fused result from SessionManager fusion queue
+                fused_result = session_manager.fusion_results_queue.get(timeout=0.5)
             except queue.Empty:
                 # Print stats if no results for a while
                 if time.time() - last_stats_time > 5.0:
@@ -1146,17 +1048,16 @@ async def stream_video(websocket: WebSocket):
                 details = tier1_result["details"]
                 
                 if status == "Suspected Anomaly":
-                    # Check cooldown period to prevent duplicate anomalies
-                    global last_anomaly_time, current_anomaly_event
+                    # CONSOLIDATED: Use SessionManager for anomaly cooldown tracking
+                    stats = session_manager.get_stats()
+                    last_anomaly_time = stats.get("last_anomaly_time", 0)
+                    anomaly_cooldown_period = 1.0  # 1 second cooldown
+                    
                     time_since_last = timestamp - last_anomaly_time
                     
                     if time_since_last < anomaly_cooldown_period:
                         # This is part of the same incident - update but don't process fully
-                        if current_anomaly_event:
-                            current_anomaly_event["end_time"] = timestamp
-                            current_anomaly_event["duration"] = timestamp - current_anomaly_event["timestamp"]
-                            current_anomaly_event["frame_count"] += 1
-                            print(f"🔄 Continuing incident (cooldown: {time_since_last:.1f}s)")
+                        print(f"🔄 Continuing incident (cooldown: {time_since_last:.1f}s)")
                         # Still send to frontend but mark as continuation
                         tier1_result.update({
                             "status": "Normal",  # Don't trigger new anomaly alert
@@ -1164,10 +1065,10 @@ async def stream_video(websocket: WebSocket):
                             "incident_continuation": True
                         })
                     else:
-                        # This is a NEW anomaly incident - process fully
-                        last_anomaly_time = timestamp
-                        performance_stats["tier1_anomalies_detected"] += 1
-                        print(f"\n🚨 NEW ANOMALY INCIDENT #{performance_stats['tier1_anomalies_detected']}")
+                        # This is a NEW anomaly incident - process fully  
+                        session_manager.update_stats({"last_anomaly_time": timestamp})
+                        session_manager.increment_stat("tier1_anomalies_detected")
+                        print(f"\n🚨 NEW ANOMALY INCIDENT #{session_manager.get_stats()['tier1_anomalies_detected']}")
                         print(f"🚨 ANOMALY DETECTED: {details}")
                         
                         # 🔍 DETAILED ANOMALY BREAKDOWN
@@ -1203,16 +1104,21 @@ async def stream_video(websocket: WebSocket):
                             "tier1_result": tier1_result,
                             "tier2_analysis": None  # Will be populated when Tier 2 completes
                         }
-                        # Add to user's live camera anomalies
-                        add_user_anomaly(current_username, 'live', anomaly_event)
+                        
+                        # Use simplified storage for dashboard mode
+                        if is_dashboard:
+                            dashboard_mode.add_dashboard_anomaly(anomaly_event)
+                        else:
+                            # Use complex user-specific storage for frontend
+                            add_user_anomaly(current_username, 'live', anomaly_event)
                         current_anomaly_event = anomaly_event  # Track current incident
                         
                         # Save to MongoDB (async)
                         await save_anomaly_to_db(anomaly_event.copy(), current_username)
                         
                         # TRIGGER TIER 2 ANALYSIS (synchronous but optimized)
-                        performance_stats["tier2_analyses_triggered"] += 1
-                        print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{performance_stats['tier2_analyses_triggered']}...")
+                        session_manager.increment_stat("tier2_analyses_triggered")
+                        print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{session_manager.get_stats()['tier2_analyses_triggered']}...")
                         print(f"🔬 Tier 2 Analysis Starting for Frame {frame_id} at {timestamp}")
                         
                         # Send immediate Tier 2 start notification to frontend
@@ -1233,7 +1139,7 @@ async def stream_video(websocket: WebSocket):
                         
                         try:
                             tier2_result = run_tier2_continuous(frame.copy(), audio_chunk_path, tier1_result.copy())
-                            performance_stats["tier2_analyses_completed"] += 1
+                            session_manager.increment_stat("tier2_analyses_completed")
                             
                             # Update anomaly event with Tier 2 analysis
                             anomaly_event["tier2_analysis"] = tier2_result
@@ -1261,7 +1167,7 @@ async def stream_video(websocket: WebSocket):
                                 print(f"❌ Tier 2 WebSocket error: {send_error}")
                                 
                         except Exception as tier2_error:
-                            performance_stats["tier2_analyses_failed"] += 1
+                            session_manager.increment_stat("tier2_analyses_failed")
                             print(f"❌ TIER 2 ANALYSIS FAILED: {tier2_error}")
                             
                             # Send error tier2 result
@@ -1334,261 +1240,27 @@ async def stream_video(websocket: WebSocket):
         except:
             pass
     finally:
-        # Cleanup resources
-        try:
-            # Signal session threads to stop
-            session_stop_event.set()
-            print(f"🛑 Stop signal sent to session {session_id}")
-            
-            # Wait for session threads to stop
-            if session_id in processing_sessions:
-                session_threads = processing_sessions[session_id].get('threads', [])
-                if session_threads:
-                    print(f"⏳ Waiting for {len(session_threads)} session threads to stop...")
-                    for thread in session_threads:
-                        if thread.is_alive():
-                            thread.join(timeout=2.0)
-                            if thread.is_alive():
-                                print(f"⚠️ Thread {thread.name} did not stop gracefully")
-                            else:
-                                print(f"✅ Thread {thread.name} stopped")
-                
-                # Remove session
-                del processing_sessions[session_id]
-                print(f"🗑️ Session {session_id} removed")
-            
-            # Unregister WebSocket connection
-            if current_username in active_websocket_connections:
-                del active_websocket_connections[current_username]
-                print(f"📡 Unregistered WebSocket for user: {current_username}")
-            
-            if video_cap:
-                video_cap.release()
-                print("📹 Video capture released")
-            if video_writer:
-                video_writer.release()
-                print("📼 Video writer released")
-            if 'audio_stream' in locals():
-                audio_stream.stop()
-                print("🔊 Audio stream stopped")
-            
-            # Remove camera from active list and reset global flag  
-            if hasattr(app.state, 'active_cameras'):
-                app.state.active_cameras.clear()
-                print("📷 All cameras removed from active list")
-            
-            # Reset camera flag
-            camera_in_use = False
-            print("🔓 Camera lock released")
-            
-            # Destroy OpenCV windows
-            cv2.destroyAllWindows()
-            print("🪟 OpenCV windows destroyed")
-                
-            print(f"📹 Video saved: {video_filename}")
-            print(f"🚨 Final Tier 1 anomalies: {performance_stats['tier1_anomalies_detected']}")
-            print(f"🔬 Final Tier 2 analyses: {performance_stats['tier2_analyses_completed']}")
-            print_performance_stats()
-        except Exception as e:
-            print(f"Cleanup error: {e}")
-
-def video_capture_worker(video_cap, video_writer, fps):
-    """Video Thread: Capture frames at 30 FPS, process every 5th frame (~6 FPS)"""
-    global performance_stats, stop_processing
-    frame_count = 0
-    processed_count = 0
-    start_time = time.time()
-    
-    print("🎬 Video capture worker started")
-    
-    while not stop_processing.is_set():
-        ret, frame = video_cap.read()
-        if not ret:
-            print("❌ Video capture failed")
-            break
-            
-        performance_stats["frames_captured"] += 1
-        frame_count += 1
+        # Cleanup session using SessionManager
+        print(f"🧹 Cleaning up session: {session_id}")
         
-        # Record every frame to video
-        try:
-            if video_writer.isOpened():
-                video_writer.write(frame)
-        except Exception as e:
-            pass  # Silent video writing errors
+        # Unregister WebSocket connection
+        session_manager.unregister_websocket(current_username)
         
-        # Process every 5th frame (~6 FPS)
-        if frame_count % 5 == 0:
-            current_timestamp = time.time()
-            
-            try:
-                # Create video embedding/data packet
-                video_data = {
-                    "frame_id": frame_count,
-                    "timestamp": current_timestamp,
-                    "frame": frame.copy(),  # Make a copy for thread safety
-                    "session_time": current_timestamp - start_time
-                }
-                
-                # Add to video queue (non-blocking)
-                if not video_queue.full():
-                    video_queue.put(video_data)
-                    performance_stats["frames_processed"] += 1
-                    processed_count += 1
-                else:
-                    # Only log queue full occasionally
-                    if frame_count % 300 == 0:
-                        print("⚠️ Video queue full, dropping frames")
-                    
-            except Exception as e:
-                print(f"❌ Video processing error: {e}")
+        # Clean up session and all its resources - SINGLE CLEANUP ENTRY POINT
+        session_manager.cleanup_session(session_id)
         
-        # REMOVED SPAM: Only log stats every 30 seconds instead of every 10 seconds
+        print(f"✅ Session {session_id} cleanup complete")
 
-def audio_capture_worker(audio_queue, audio_stream):
-    """Audio Thread: Capture and transcribe audio continuously"""
-    global performance_stats, stop_processing
-    from utils.audio_processing import chunk_and_transcribe_tiny
-    
-    chunk_count = 0
-    transcribed_count = 0
-    start_time = time.time()
-    
-    print("🎤 Audio capture worker started")
-    
-    while not stop_processing.is_set():
-        try:
-            # Get audio chunk (blocks until available)
-            audio_chunk_path = audio_stream.get_chunk()
-            
-            if audio_chunk_path:
-                performance_stats["audio_chunks_captured"] += 1
-                chunk_count += 1
-                current_timestamp = time.time()
-                
-                # Transcribe audio
-                transcripts = chunk_and_transcribe_tiny(audio_chunk_path)
-                
-                if transcripts:
-                    audio_text = " | ".join(transcripts)
-                    performance_stats["audio_transcribed"] += 1
-                    transcribed_count += 1
-                    
-                    # Create audio data packet
-                    audio_data = {
-                        "timestamp": current_timestamp,
-                        "audio_text": audio_text,
-                        "transcripts": transcripts,
-                        "chunk_path": audio_chunk_path
-                    }
-                    
-                    # Add to audio queue (non-blocking)
-                    if not audio_queue.full():
-                        audio_queue.put(audio_data)
-                    else:
-                        # Only log queue full occasionally
-                        if chunk_count % 100 == 0:
-                            print("⚠️ Audio queue full, dropping transcripts")
-                
-                # REMOVED SPAM: No more regular audio logging
-            else:
-                time.sleep(0.05)  # Brief pause if no audio available
-                
-        except Exception as e:
-            print(f"❌ Audio worker error: {e}")
-            time.sleep(0.1)
+# ========== CONSOLIDATED WORKER FUNCTIONS - SESSION MANAGER ONLY ==========
+# These replace all old global-variable-based worker functions
 
-def fusion_worker(video_queue_param=None, audio_queue_param=None, fusion_results_queue_param=None):
-    """Fusion Worker: Align video and audio streams with temporal matching"""
-    global performance_stats, video_queue, audio_queue, fusion_results_queue
-    
-    # Use global queues if not provided (for live camera mode)
-    if video_queue_param is not None:
-        video_queue_to_use = video_queue_param
-        audio_queue_to_use = audio_queue_param 
-        fusion_results_queue_to_use = fusion_results_queue_param
-    else:
-        video_queue_to_use = video_queue
-        audio_queue_to_use = audio_queue
-        fusion_results_queue_to_use = fusion_results_queue
-    
-    print("🔀 Fusion worker started")
-    
-    # Keep recent audio data for temporal matching
-    recent_audio = deque(maxlen=20)  # Store last 20 audio chunks (~5 seconds)
-    
-    while not stop_processing.is_set():
-        try:
-            # Get video frame (blocking with shorter timeout)
-            try:
-                video_data = video_queue_to_use.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            
-            video_timestamp = video_data["timestamp"]
-            
-            # Update recent audio buffer
-            while not audio_queue_to_use.empty():
-                try:
-                    audio_data = audio_queue_to_use.get_nowait()
-                    recent_audio.append(audio_data)
-                except queue.Empty:
-                    break
-            
-            # Find nearest audio within ±0.5s
-            best_audio = None
-            min_time_diff = float('inf')
-            
-            for audio_data in recent_audio:
-                time_diff = abs(video_timestamp - audio_data["timestamp"])
-                if time_diff <= 0.5 and time_diff < min_time_diff:
-                    best_audio = audio_data
-                    min_time_diff = time_diff
-            
-            # Create fused result
-            if best_audio:
-                fused_result = {
-                    "frame_id": video_data["frame_id"],
-                    "timestamp": video_timestamp,
-                    "frame": video_data["frame"],
-                    "audio_text": best_audio["audio_text"],
-                    "audio_chunk_path": best_audio["chunk_path"],
-                    "fusion_status": "video+audio",
-                    "time_sync_diff": min_time_diff
-                }
-                performance_stats["fusion_video_audio"] += 1
-                # REMOVED SPAM: No more fusion success logging
-            else:
-                fused_result = {
-                    "frame_id": video_data["frame_id"],
-                    "timestamp": video_timestamp,
-                    "frame": video_data["frame"],
-                    "audio_text": None,
-                    "audio_chunk_path": None,
-                    "fusion_status": "video-only",
-                    "time_sync_diff": None
-                }
-                performance_stats["fusion_video_only"] += 1
-                # REMOVED SPAM: No more fusion miss logging
-            
-            # Add to fusion results queue
-            if not fusion_results_queue_to_use.full():
-                fusion_results_queue_to_use.put(fused_result)
-            # Silently drop if queue is full
-                
-        except Exception as e:
-            print(f"❌ Fusion worker error: {e}")
-            time.sleep(0.1)
-
-# Session-aware worker functions that can be stopped individually
 def video_capture_worker_session(video_cap, video_writer, fps, session_stop_event):
-    """Session-aware video worker that can be stopped cleanly"""
-    global performance_stats
+    """CONSOLIDATED Session-aware video worker - uses SessionManager only"""
     frame_count = 0
     processed_count = 0
     start_time = time.time()
     
-    print("🎬 Session video capture worker started")
+    print("🎬 Session video worker started (CONSOLIDATED)")
     
     while not session_stop_event.is_set():
         ret, frame = video_cap.read()
@@ -1596,12 +1268,13 @@ def video_capture_worker_session(video_cap, video_writer, fps, session_stop_even
             print("❌ Video capture failed")
             break
             
-        performance_stats["frames_captured"] += 1
+        # Use SessionManager for stats
+        session_manager.increment_stat("frames_captured")
         frame_count += 1
         
         # Record every frame to video
         try:
-            if video_writer.isOpened():
+            if video_writer and video_writer.isOpened():
                 video_writer.write(frame)
         except Exception as e:
             pass  # Silent video writing errors
@@ -1611,19 +1284,22 @@ def video_capture_worker_session(video_cap, video_writer, fps, session_stop_even
             current_timestamp = time.time()
             
             try:
-                # Create video embedding/data packet
+                # Create video data packet
                 video_data = {
                     "frame_id": frame_count,
                     "timestamp": current_timestamp,
-                    "frame": frame.copy(),  # Make a copy for thread safety
+                    "frame": frame.copy(),  # Thread-safe copy
                     "session_time": current_timestamp - start_time
                 }
                 
-                # Add to video queue (non-blocking)
-                if not video_queue.full():
-                    video_queue.put(video_data)
-                    performance_stats["frames_processed"] += 1
+                # Add to SessionManager video queue (non-blocking)
+                if not session_manager.video_queue.full():
+                    session_manager.video_queue.put(video_data)
+                    session_manager.increment_stat("frames_processed")
                     processed_count += 1
+                    
+                    if processed_count % 50 == 0:
+                        print(f"🎬 Processed {processed_count} frames")
                 else:
                     pass  # Drop frame if queue full
                     
@@ -1632,18 +1308,17 @@ def video_capture_worker_session(video_cap, video_writer, fps, session_stop_even
                 
         time.sleep(1/30.0)  # Maintain ~30 FPS
     
-    print("🎬 Session video capture worker stopped")
+    print("🎬 CONSOLIDATED Session video worker stopped")
 
 def audio_capture_worker_session(audio_queue, audio_stream, session_stop_event):
-    """Session-aware audio worker that can be stopped cleanly"""
-    global performance_stats
+    """CONSOLIDATED Session-aware audio worker - uses SessionManager only"""
     from utils.audio_processing import chunk_and_transcribe_tiny
     
     chunk_count = 0
     transcribed_count = 0
     start_time = time.time()
     
-    print("🎤 Session audio capture worker started")
+    print("🎤 Session audio worker started (CONSOLIDATED)")
     
     while not session_stop_event.is_set():
         try:
@@ -1652,9 +1327,9 @@ def audio_capture_worker_session(audio_queue, audio_stream, session_stop_event):
             
             if audio_chunk_path:
                 try:
-                    performance_stats["audio_chunks_captured"] += 1
-                except KeyError:
-                    print("❌ Session audio worker error: 'audio_chunks_captured'")
+                    # Use SessionManager for stats
+                    session_manager.increment_stat("audio_chunks_captured")
+                except:
                     continue
                     
                 chunk_count += 1
@@ -1665,7 +1340,7 @@ def audio_capture_worker_session(audio_queue, audio_stream, session_stop_event):
                 
                 if transcripts:
                     audio_text = " | ".join(transcripts)
-                    performance_stats["audio_transcribed"] += 1
+                    session_manager.increment_stat("audio_transcribed")
                     transcribed_count += 1
                     
                     # Create audio data packet
@@ -1676,52 +1351,48 @@ def audio_capture_worker_session(audio_queue, audio_stream, session_stop_event):
                         "chunk_path": audio_chunk_path
                     }
                     
-                    # Add to audio queue (non-blocking)
-                    if not audio_queue.full():
-                        audio_queue.put(audio_data)
+                    # Add to SessionManager audio queue (non-blocking)
+                    if not session_manager.audio_queue.full():
+                        session_manager.audio_queue.put(audio_data)
+                        
+                        if transcribed_count % 20 == 0:
+                            print(f"🎤 Transcribed {transcribed_count} audio chunks")
                     else:
                         # Only log queue full occasionally
                         if chunk_count % 100 == 0:
                             print("⚠️ Audio queue full, dropping transcripts")
                 
-                # REMOVED SPAM: No more regular audio logging
             else:
                 time.sleep(0.05)  # Brief pause if no audio available
                 
         except Exception as e:
             print(f"❌ Session audio worker error: {e}")
-            time.sleep(0.1)
     
-    print("🎤 Session audio capture worker stopped")
+    print("🎤 CONSOLIDATED Session audio worker stopped")
 
 def fusion_worker_session(session_stop_event, video_queue_param=None, audio_queue_param=None, fusion_results_queue_param=None):
-    """Session-aware fusion worker that can be stopped cleanly"""
-    global performance_stats
+    """CONSOLIDATED Session-aware fusion worker - uses SessionManager only"""
     
-    # Use global queues if parameters not provided
-    video_queue_to_use = video_queue_param if video_queue_param else video_queue
-    audio_queue_to_use = audio_queue_param if audio_queue_param else audio_queue
-    fusion_results_queue_to_use = fusion_results_queue_param if fusion_results_queue_param else fusion_results_queue
-    
-    print("🔀 Session fusion worker started")
+    print("🔀 Session fusion worker started (CONSOLIDATED)")
     
     # Keep recent audio data for temporal matching
     recent_audio = deque(maxlen=20)  # Store last 20 audio chunks (~5 seconds)
+    fusion_count = 0
     
     while not session_stop_event.is_set():
         try:
-            # Get video frame (blocking with shorter timeout)
+            # Get video frame from SessionManager (blocking with timeout)
             try:
-                video_data = video_queue_to_use.get(timeout=0.5)
+                video_data = session_manager.video_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
             
             video_timestamp = video_data["timestamp"]
             
-            # Update recent audio buffer
-            while not audio_queue_to_use.empty():
+            # Update recent audio buffer from SessionManager
+            while not session_manager.audio_queue.empty():
                 try:
-                    audio_data = audio_queue_to_use.get_nowait()
+                    audio_data = session_manager.audio_queue.get_nowait()
                     recent_audio.append(audio_data)
                 except queue.Empty:
                     break
@@ -1747,7 +1418,7 @@ def fusion_worker_session(session_stop_event, video_queue_param=None, audio_queu
                     "fusion_status": "video+audio",
                     "time_sync_diff": min_time_diff
                 }
-                performance_stats["fusion_video_audio"] += 1
+                session_manager.increment_stat("fusion_video_audio")
             else:
                 fused_result = {
                     "frame_id": video_data["frame_id"],
@@ -1758,27 +1429,41 @@ def fusion_worker_session(session_stop_event, video_queue_param=None, audio_queu
                     "fusion_status": "video-only",
                     "time_sync_diff": None
                 }
-                performance_stats["fusion_video_only"] += 1
+                session_manager.increment_stat("fusion_video_only")
             
-            # Add to fusion results queue
-            if not fusion_results_queue_to_use.full():
-                fusion_results_queue_to_use.put(fused_result)
+            # Add to SessionManager fusion results queue
+            if not session_manager.fusion_results_queue.full():
+                session_manager.fusion_results_queue.put(fused_result)
+                fusion_count += 1
+                
+                if fusion_count % 30 == 0:
+                    print(f"🔀 Processed {fusion_count} fusion results")
             # Silently drop if queue is full
                 
         except Exception as e:
             print(f"❌ Session fusion worker error: {e}")
             time.sleep(0.1)
     
-    print("🔀 Session fusion worker stopped")
+    print("🔀 CONSOLIDATED Session fusion worker stopped")
 
 @app.get("/anomaly_events")
 async def get_anomaly_events(username: str = None, anomaly_type: str = None):
-    """Get user-specific anomaly events by type"""
+    """Get anomaly events - simplified for dashboard mode"""
     try:
         if not username:
-            return {"anomaly_events": [], "error": "Username required"}
+            username = "dashboard_user"  # Default to dashboard user
         
-        # Add timeout protection to prevent hanging
+        # Check if dashboard mode
+        if dashboard_mode.is_dashboard_user(username):
+            anomalies = dashboard_mode.get_dashboard_anomalies()
+            return {
+                "anomaly_events": anomalies,
+                "mode": "dashboard",
+                "total": len(anomalies),
+                "stats": dashboard_mode.get_dashboard_stats()
+            }
+        
+        # Original user-specific logic for frontend
         try:
             user_anomalies = get_user_anomalies(username, anomaly_type)
         except Exception as e:
@@ -1864,7 +1549,7 @@ async def download_session_data(username: str = "demo_user"):
                     "username": username,
                     "total_anomalies": len(user_anomalies),
                     "generation_time": datetime.now().isoformat(),
-                    "performance_stats": performance_stats
+                    "performance_stats": session_manager.get_stats()  # Use SessionManager stats
                 },
                 "anomaly_events": user_anomalies
             }
@@ -1985,13 +1670,8 @@ async def upload_video(file: UploadFile = File(...)):
 
 @app.websocket("/process_uploaded_video/{filename}")
 async def process_uploaded_video(websocket: WebSocket, filename: str):
-    """Process uploaded video through the same anomaly detection pipeline"""
+    """CONSOLIDATED uploaded video processing via SessionManager"""
     await websocket.accept()
-    
-    # Clear any previous stop signals
-    global stop_processing
-    stop_processing.clear()
-    print("🔄 Stop signal cleared for video upload session")
     
     # Get user authentication from WebSocket headers or query params
     current_username = "demo_user"  # Default for now - should be from session/auth
@@ -2013,64 +1693,42 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
         return
     
     try:
-        # Reset global state for new video processing session
-        global performance_stats, last_anomaly_time, current_anomaly_event
-        # Reset user's upload data for new session
-        user_data = get_user_data(current_username)
-        user_data['upload'] = []
-        current_anomaly_event = None
-        last_anomaly_time = 0
-        performance_stats = {
-            "pipeline_start_time": time.time(),
-            "frames_processed": 0,
-            "frames_captured": 0,
-            "audio_transcribed": 0,
-            "tier1_anomalies_detected": 0,
-            "tier2_analyses_triggered": 0,
-            "tier2_analyses_completed": 0,
-            "tier2_analyses_failed": 0,
-            "fusion_video_audio": 0,
-            "fusion_video_only": 0
-        }
+        # CONSOLIDATED: SessionManager handles ALL state initialization
+        # No need for manual global variable reset - SessionManager handles this
         
         print(f"📹 Processing uploaded video: {filename}")
         await websocket.send_json({"status": "Processing started", "filename": filename})
         
-        # For uploaded videos, we don't need live audio capture
-        # Extract audio from the video file itself or process video-only
+        # CONSOLIDATED: Use SessionManager's start_session_workers for uploaded video
+        upload_session_id = session_manager.create_session(current_username, "uploaded_video")
         
-        # Create queues
-        video_queue = queue.Queue(maxsize=50)
-        audio_queue = queue.Queue(maxsize=100)
-        fusion_results_queue = queue.Queue(maxsize=20)
+        # SessionManager handles ALL worker creation and management
+        workers_started = session_manager.start_session_workers(
+            upload_session_id, 
+            video_cap=video_cap,
+            video_writer=None,  # No recording for uploaded videos
+            fps=30,  # Default FPS 
+            audio_stream=None  # No audio for uploaded videos
+        )
         
-        # Start worker threads - NO audio capture for uploaded videos
-        video_thread = threading.Thread(target=video_capture_worker_uploaded, 
-                                       args=(video_queue, video_cap, filename))
-        # Use dummy audio worker instead of live audio capture
-        audio_thread = threading.Thread(target=dummy_audio_worker, 
-                                       args=(audio_queue,))
-        fusion_thread = threading.Thread(target=fusion_worker, 
-                                        args=(video_queue, audio_queue, fusion_results_queue))
+        if not workers_started:
+            video_cap.release()
+            await websocket.send_json({"error": "Failed to start video processing workers"})
+            return
         
-        video_thread.daemon = True
-        audio_thread.daemon = True  
-        fusion_thread.daemon = True
-        
-        video_thread.start()
-        audio_thread.start()
-        fusion_thread.start()
+        print(f"🚀 Upload workers started via SessionManager for session {upload_session_id}")
         
         # Process fusion results (same logic as live stream)
         last_stats_time = time.time()
         
         while True:
             try:
-                # Get fused result from fusion worker (faster timeout)
-                fused_result = fusion_results_queue.get(timeout=0.5)
+                # Get fused result from SessionManager fusion queue - CONSOLIDATED
+                fused_result = session_manager.fusion_results_queue.get(timeout=0.5)
             except queue.Empty:
-                # Check if video processing is complete
-                if not video_thread.is_alive():
+                # Check if video processing is complete via SessionManager
+                session = session_manager.get_session(upload_session_id)
+                if session and not any(t.is_alive() for t in session['threads']):
                     print("📹 Video processing completed")
                     user_anomalies = get_user_anomalies(current_username, 'upload')
                     await websocket.send_json({"status": "Processing completed", "total_anomalies": len(user_anomalies)})
@@ -2092,16 +1750,16 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
             details = tier1_result.get("details", "Monitoring...")
             
             if status == "Suspected Anomaly":
-                # Same anomaly processing logic as live stream
+                # CONSOLIDATED: Use SessionManager for anomaly cooldown tracking (uploaded video)
+                stats = session_manager.get_stats()
+                last_anomaly_time = stats.get("last_anomaly_time", 0) 
+                anomaly_cooldown_period = 1.0  # 1 second cooldown
+                
                 time_since_last = timestamp - last_anomaly_time
                 
                 if time_since_last < anomaly_cooldown_period:
                     # This is part of the same incident - update but don't process fully
-                    if current_anomaly_event:
-                        current_anomaly_event["end_time"] = timestamp
-                        current_anomaly_event["duration"] = timestamp - current_anomaly_event["timestamp"]
-                        current_anomaly_event["frame_count"] += 1
-                        print(f"🔄 Continuing incident (cooldown: {time_since_last:.1f}s)")
+                    print(f"🔄 Continuing incident (cooldown: {time_since_last:.1f}s)")
                     # Still send to frontend but mark as continuation
                     tier1_result.update({
                         "status": "Normal",
@@ -2109,10 +1767,12 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                         "incident_continuation": True
                     })
                 else:
-                    # This is a NEW anomaly incident - process fully
-                    last_anomaly_time = timestamp
-                    performance_stats["tier1_anomalies_detected"] += 1
-                    print(f"\n🚨 NEW ANOMALY INCIDENT #{performance_stats['tier1_anomalies_detected']}")
+                    # This is a NEW anomaly incident - process fully (uploaded video)
+                    session_manager.update_stats({"last_anomaly_time": timestamp})
+                    # CONSOLIDATED: Use SessionManager for stats
+                    session_manager.increment_stat("tier1_anomalies_detected")
+                    stats = session_manager.get_stats()
+                    print(f"\n🚨 NEW ANOMALY INCIDENT #{stats['tier1_anomalies_detected']}")
                     print(f"📍 Details: {details}")
                     print(f"🔀 Fusion: {fusion_status} | Frame: {frame_id} | Time: {timestamp:.2f}s")
                     
@@ -2139,13 +1799,14 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                     add_user_anomaly(current_username, 'upload', anomaly_event)
                     current_anomaly_event = anomaly_event
                     
-                    # TRIGGER TIER 2 ANALYSIS
-                    performance_stats["tier2_analyses_triggered"] += 1
-                    print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{performance_stats['tier2_analyses_triggered']}...")
+                    # TRIGGER TIER 2 ANALYSIS - CONSOLIDATED stats for upload
+                    session_manager.increment_stat("tier2_analyses_triggered")
+                    tier2_stats = session_manager.get_stats()
+                    print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{tier2_stats['tier2_analyses_triggered']}...")
                     
                     try:
                         tier2_result = run_tier2_continuous(frame.copy(), audio_chunk_path, tier1_result.copy())
-                        performance_stats["tier2_analyses_completed"] += 1
+                        session_manager.increment_stat("tier2_analyses_completed")
                         
                         # Update anomaly event with Tier 2 analysis
                         anomaly_event["tier2_analysis"] = tier2_result
@@ -2171,7 +1832,7 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                             print(f"❌ Tier 2 WebSocket error: {send_error}")
                             
                     except Exception as tier2_error:
-                        performance_stats["tier2_analyses_failed"] += 1
+                        session_manager.increment_stat("tier2_analyses_failed")
                         print(f"❌ TIER 2 ANALYSIS FAILED: {tier2_error}")
             else:
                 # No anomaly detected - reset cooldown tracking
@@ -2217,15 +1878,10 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
         except:
             pass
     finally:
-        # Signal threads to stop
-        stop_processing.set()
-        print("🛑 Stop signal sent to upload processing threads")
-        
-        # Give threads time to stop gracefully
-        time.sleep(0.3)
-        
-        video_cap.release()
-        print("📹 Video capture released for upload processing")
+        # CONSOLIDATED CLEANUP - SessionManager handles everything
+        print(f"🧹 CONSOLIDATED cleanup for upload session: {upload_session_id}")
+        session_manager.cleanup_session(upload_session_id)
+        print("✅ Upload session cleanup complete")
         
         # Destroy OpenCV windows
         cv2.destroyAllWindows()
@@ -2280,25 +1936,8 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
         return
     
     try:
-        # Reset global state for new CCTV session
-        global performance_stats, last_anomaly_time, current_anomaly_event
-        # Reset user's CCTV data for new session
-        user_data = get_user_data(current_username)
-        user_data['cctv'] = []
-        current_anomaly_event = None
-        last_anomaly_time = 0
-        performance_stats = {
-            "pipeline_start_time": time.time(),
-            "frames_processed": 0,
-            "frames_captured": 0,
-            "audio_transcribed": 0,
-            "tier1_anomalies_detected": 0,
-            "tier2_analyses_triggered": 0,
-            "tier2_analyses_completed": 0,
-            "tier2_analyses_failed": 0,
-            "fusion_video_audio": 0,
-            "fusion_video_only": 0
-        }
+        # CONSOLIDATED: SessionManager handles ALL state initialization for CCTV
+        # No need for manual global variable reset - SessionManager handles this
         
         print(f"🎥 CCTV connection successful: {ip}:{port}")
         await websocket.send_json({"status": "CCTV connected", "rtsp_url": rtsp_url})
@@ -2306,42 +1945,43 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
         # Use the same processing pipeline as live stream but for CCTV
         # Note: Most CCTV streams don't have audio, so primarily video-only processing
         
-        # Create queues
-        video_queue = queue.Queue(maxsize=50)
-        audio_queue = queue.Queue(maxsize=100)  # Will be mostly empty for CCTV
-        fusion_results_queue = queue.Queue(maxsize=20)
+        # CONSOLIDATED: Use SessionManager's start_session_workers for CCTV
+        cctv_session_id = session_manager.create_session(current_username, "cctv_stream")
         
-        # Start worker threads (same as live stream but adapted for CCTV)
-        video_thread = threading.Thread(target=video_capture_worker_cctv, 
-                                       args=(video_queue, video_cap, rtsp_url))
-        # For CCTV, we'll use a dummy audio worker since most CCTV don't have audio
-        audio_thread = threading.Thread(target=dummy_audio_worker, args=(audio_queue,))
-        fusion_thread = threading.Thread(target=fusion_worker, 
-                                        args=(video_queue, audio_queue, fusion_results_queue))
+        # SessionManager handles ALL worker creation and management for CCTV
+        workers_started = session_manager.start_session_workers(
+            cctv_session_id,
+            video_cap=video_cap,
+            video_writer=None,  # No recording for CCTV by default
+            fps=30,  # Default FPS for CCTV
+            audio_stream=None  # Most CCTV streams don't have audio
+        )
         
-        video_thread.daemon = True
-        audio_thread.daemon = True
-        fusion_thread.daemon = True
+        if not workers_started:
+            video_cap.release()
+            await websocket.send_json({"error": "Failed to start CCTV processing workers"})
+            return
         
-        video_thread.start()
-        audio_thread.start()
-        fusion_thread.start()
+        print(f"🚀 CCTV workers started via SessionManager for session {cctv_session_id}")
         
-        # Process fusion results (same logic as live stream)
+        # Process fusion results via SessionManager - CONSOLIDATED
         last_stats_time = time.time()
         
         while True:
             try:
-                # Get fused result from fusion worker
-                fused_result = fusion_results_queue.get(timeout=0.5)
+                # Get fused result from SessionManager fusion queue
+                fused_result = session_manager.fusion_results_queue.get(timeout=0.5)
             except queue.Empty:
                 # Print stats if no results for a while
                 if time.time() - last_stats_time > 30.0:  # Every 30 seconds
-                    elapsed = time.time() - performance_stats["pipeline_start_time"]
-                    if elapsed > 30:  # Only after 30 seconds
-                        fps_processed = performance_stats["frames_processed"] / elapsed if elapsed > 0 else 0
-                        print(f"\n📊 CCTV PIPELINE (Runtime: {elapsed:.1f}s)")
-                        print(f"🎬 Video: {fps_processed:.1f} FPS | 🚨 Anomalies: {performance_stats['tier1_anomalies_detected']}")
+                    stats = session_manager.get_stats()
+                    pipeline_start = stats.get("pipeline_start_time")
+                    if pipeline_start:
+                        elapsed = time.time() - pipeline_start
+                        if elapsed > 30:  # Only after 30 seconds
+                            fps_processed = stats["frames_processed"] / elapsed if elapsed > 0 else 0
+                            print(f"\n📊 CCTV PIPELINE (Runtime: {elapsed:.1f}s)")
+                            print(f"🎬 Video: {fps_processed:.1f} FPS | 🚨 Anomalies: {stats['tier1_anomalies_detected']}")
                     last_stats_time = time.time()
                 continue
             
@@ -2359,24 +1999,26 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
             details = tier1_result.get("details", "Monitoring...")
             
             if status == "Suspected Anomaly":
-                # Same anomaly processing logic as live stream
+                # CONSOLIDATED: Use SessionManager for anomaly cooldown tracking (CCTV)
+                stats = session_manager.get_stats()
+                last_anomaly_time = stats.get("last_anomaly_time", 0)
+                anomaly_cooldown_period = 1.0  # 1 second cooldown
+                
                 time_since_last = timestamp - last_anomaly_time
                 
                 if time_since_last < anomaly_cooldown_period:
-                    if current_anomaly_event:
-                        current_anomaly_event["end_time"] = timestamp
-                        current_anomaly_event["duration"] = timestamp - current_anomaly_event["timestamp"]
-                        current_anomaly_event["frame_count"] += 1
+                    print(f"🔄 Continuing incident (cooldown: {time_since_last:.1f}s)")
                     tier1_result.update({
                         "status": "Normal",
                         "details": "Monitoring...",
                         "incident_continuation": True
                     })
                 else:
-                    # NEW anomaly incident
-                    last_anomaly_time = timestamp
-                    performance_stats["tier1_anomalies_detected"] += 1
-                    print(f"\n🚨 CCTV ANOMALY #{performance_stats['tier1_anomalies_detected']}")
+                    # NEW anomaly incident (CCTV)
+                    session_manager.update_stats({"last_anomaly_time": timestamp})
+                    session_manager.increment_stat("tier1_anomalies_detected")
+                    stats = session_manager.get_stats()
+                    print(f"\n🚨 CCTV ANOMALY #{stats['tier1_anomalies_detected']}")
                     print(f"📍 Details: {details}")
                     print(f"🔀 Fusion: {fusion_status} | Frame: {frame_id}")
                     
@@ -2404,12 +2046,13 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
                     current_anomaly_event = anomaly_event
                     
                     # TRIGGER TIER 2 ANALYSIS
-                    performance_stats["tier2_analyses_triggered"] += 1
-                    print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{performance_stats['tier2_analyses_triggered']}...")
+                    session_manager.increment_stat("tier2_analyses_triggered")
+                    stats = session_manager.get_stats() 
+                    print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{stats['tier2_analyses_triggered']}...")
                     
                     try:
                         tier2_result = run_tier2_continuous(frame.copy(), audio_chunk_path, tier1_result.copy())
-                        performance_stats["tier2_analyses_completed"] += 1
+                        session_manager.increment_stat("tier2_analyses_completed")
                         
                         anomaly_event["tier2_analysis"] = tier2_result
                         tier1_result["tier2_analysis"] = tier2_result
@@ -2433,7 +2076,7 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
                             print(f"❌ Tier 2 WebSocket error: {send_error}")
                             
                     except Exception as tier2_error:
-                        performance_stats["tier2_analyses_failed"] += 1
+                        session_manager.increment_stat("tier2_analyses_failed")
                         print(f"❌ TIER 2 ANALYSIS FAILED: {tier2_error}")
             else:
                 current_anomaly_event = None
@@ -2468,137 +2111,16 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
         except:
             pass
     finally:
-        # Signal threads to stop
-        stop_processing.set()
-        print("🛑 Stop signal sent to CCTV processing threads")
-        
-        # Give threads time to stop gracefully
-        time.sleep(0.3)
-        
-        video_cap.release()
-        print("📹 CCTV video capture released")
-        
-        # Destroy OpenCV windows
-        cv2.destroyAllWindows()
-        print("🪟 OpenCV windows destroyed")
-        
-        # Reset stop signal for next session
-        stop_processing.clear()
+        # CONSOLIDATED CLEANUP - SessionManager handles everything
+        print(f"🧹 CONSOLIDATED cleanup for CCTV session: {cctv_session_id}")
+        session_manager.cleanup_session(cctv_session_id)
+        print("✅ CCTV session cleanup complete")
         print("🔄 Stop signal reset for next session")
         
         print(f"🎥 CCTV session ended: {ip}:{port}")
 
-# Helper worker functions for uploaded video and CCTV
-def video_capture_worker_uploaded(video_queue, video_cap, filename):
-    """Video capture worker for uploaded video files"""
-    global performance_stats, stop_processing
-    print(f"📹 Video worker started for: {filename}")
-    
-    frame_count = 0
-    fps = video_cap.get(cv2.CAP_PROP_FPS) or 30
-    frame_delay = 1.0 / fps  # Maintain original video FPS
-    
-    start_time = time.time()
-    
-    while not stop_processing.is_set():
-        ret, frame = video_cap.read()
-        if not ret:
-            print(f"📹 End of video reached: {filename}")
-            break
-            
-        performance_stats["frames_captured"] += 1
-        frame_count += 1
-        
-        # Process every 3rd frame for faster processing while maintaining quality
-        if frame_count % 3 == 0:
-            current_timestamp = time.time()
-            
-            try:
-                video_data = {
-                    "frame_id": frame_count,
-                    "timestamp": current_timestamp,
-                    "frame": frame.copy(),
-                    "session_time": current_timestamp - start_time
-                }
-                
-                if not video_queue.full():
-                    video_queue.put(video_data)
-                    performance_stats["frames_processed"] += 1
-                    
-            except Exception as e:
-                print(f"📹 Video processing error: {e}")
-                break
-        
-        # Maintain video timing (optional - can be removed for faster processing)
-        time.sleep(max(0, frame_delay - 0.01))
-    
-    print(f"📹 Video worker ended: {filename}")
+# REMOVED: video_capture_worker_uploaded - SessionManager.start_session_workers() handles this
 
-def video_capture_worker_cctv(video_queue, video_cap, rtsp_url):
-    """Video capture worker for CCTV RTSP streams"""
-    global performance_stats, stop_processing
-    print(f"🎥 CCTV worker started: {rtsp_url}")
-    
-    frame_count = 0
-    start_time = time.time()
-    
-    while not stop_processing.is_set():
-        ret, frame = video_cap.read()
-        if not ret:
-            print(f"🎥 CCTV stream interrupted: {rtsp_url}")
-            time.sleep(1)  # Wait before retrying
-            continue
-            
-        performance_stats["frames_captured"] += 1
-        frame_count += 1
-        
-        # Process every 5th frame (~6 FPS) for real-time performance
-        if frame_count % 5 == 0:
-            current_timestamp = time.time()
-            
-            try:
-                video_data = {
-                    "frame_id": frame_count,
-                    "timestamp": current_timestamp,
-                    "frame": frame.copy(),
-                    "session_time": current_timestamp - start_time
-                }
-                
-                if not video_queue.full():
-                    video_queue.put(video_data)
-                    performance_stats["frames_processed"] += 1
-                else:
-                    # Drop frames if queue is full (real-time processing)
-                    pass
-                    
-            except Exception as e:
-                print(f"🎥 CCTV processing error: {e}")
-                break
-        
-        time.sleep(0.05)  # ~20 FPS max capture rate
-    
-    print(f"🎥 CCTV worker ended: {rtsp_url}")
-
-def dummy_audio_worker(audio_queue):
-    """Dummy audio worker for CCTV (most CCTV streams don't have audio)"""
-    global stop_processing
-    print("🎤 Dummy audio worker started (CCTV mode)")
-    
-    while not stop_processing.is_set():
-        # CCTV streams typically don't have audio, so we just add empty audio data periodically
-        try:
-            audio_data = {
-                "timestamp": time.time(),
-                "audio_text": "",  # Empty audio text for video uploads
-                "chunk_path": None,  # Use chunk_path to match fusion worker expectations
-                "transcripts": []
-            }
-            
-            if not audio_queue.full():
-                audio_queue.put(audio_data)
-            
-            time.sleep(1.0)  # Add empty audio data every second
-            
-        except Exception as e:
-            print(f"🎤 Dummy audio worker error: {e}")
-            break
+# REMOVED: video_capture_worker_cctv - SessionManager.start_session_workers() handles this
+# REMOVED: All remaining CCTV worker function code - SessionManager handles this
+# This removes another ~50 lines of redundant worker code

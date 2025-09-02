@@ -3,6 +3,8 @@ from utils.scene_processing import process_scene_tier2_frame
 from utils.fusion_logic import tier2_fusion
 from utils.pose_processing import process_pose_frame
 import json
+import traceback
+import time
 
 def run_tier2_continuous(frame, audio_chunk_path, tier1_result):
     """Enhanced Tier 2 analysis with anomaly type detection and better reasoning"""
