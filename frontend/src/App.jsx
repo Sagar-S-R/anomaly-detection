@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Welcome from './pages/Welcome';
-import LiveFeed from './components/LiveFeed';
+import LiveFeed from './components/LiveFeed'; // DISABLED in UI - keeping for future use
 import AnomalyList from './components/AnomalyList';
 import JsonOutput from './components/JsonOutput';
 import VideoControls from './components/VideoControls';
 import InputSelector from './pages/InputSelector';
-import LiveCameraMonitoring from './pages/LiveCameraMonitoring';
+import LiveCameraMonitoring from './pages/LiveCameraMonitoring'; // DISABLED in UI - keeping for future use
 import CCTVMonitoring from './pages/CCTVMonitoring';
 import VideoPlayback from './components/VideoPlayback';
 import UserDashboard from './pages/UserDashboard';
@@ -18,7 +18,7 @@ import './index.css';
 function App() {
   // Authentication state
   const [user, setUser] = useState(null);
-  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'register', 'welcome', 'dashboard', 'input-selector', 'live-monitoring', 'upload-monitoring', 'cctv-monitoring', 'monitoring'
+  const [currentPage, setCurrentPage] = useState('login'); // 'login', 'register', 'welcome', 'dashboard', 'input-selector', 'upload-monitoring', 'cctv-monitoring', 'monitoring'
   
   // Debug/Demo mode - set to true to skip login
   const DEMO_MODE = false; // Change to true to skip authentication
@@ -100,8 +100,11 @@ function App() {
     
     // Route to specific monitoring pages instead of unified monitoring
     if (mode === 'live') {
-      setCurrentPage('live-monitoring');
-      connectWebSocket('/stream_video');
+      // LIVE CAMERA DISABLED - redirect to input selector
+      alert('Live Camera feature is temporarily disabled. Please use CCTV or Upload Video.');
+      return;
+      // setCurrentPage('live-monitoring');
+      // connectWebSocket('/stream_video');
     } else if (mode === 'cctv') {
       setCurrentPage('cctv-monitoring');
       if (config) {
@@ -730,8 +733,8 @@ function App() {
     );
   }
 
-  // Live Camera Monitoring Page
-  if (currentPage === 'live-monitoring') {
+  // Live Camera Monitoring Page - DISABLED FOR NOW
+  if (false && currentPage === 'live-monitoring') {
     return (
       <LiveCameraMonitoring
         user={user}

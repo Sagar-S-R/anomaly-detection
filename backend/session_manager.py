@@ -564,6 +564,16 @@ class SessionManager:
                 if stat_name == "tier1_anomalies_detected" and self.performance_stats[stat_name] % 10 == 0:
                     print(f"📊 Milestone: {self.performance_stats[stat_name]} total anomalies detected")
     
+    def update_stats(self, stats_dict: Dict[str, Any]) -> None:
+        """Thread-safe update of performance statistics"""
+        with self._lock:
+            for key, value in stats_dict.items():
+                if key in self.performance_stats:
+                    self.performance_stats[key] = value
+                else:
+                    # Add new stats if they don't exist
+                    self.performance_stats[key] = value
+    
     def health_check(self) -> Dict[str, Any]:
         """Comprehensive system health check"""
         with self._lock:

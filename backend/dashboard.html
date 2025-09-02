@@ -326,6 +326,219 @@
             color: var(--cyber-blue);
         }
 
+        /* Real-time Detection Pipeline */
+        .detection-pipeline {
+            margin-top: 30px;
+            border: 2px solid var(--cyber-purple);
+            border-radius: 15px;
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.2), transparent);
+        }
+
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .pipeline-card {
+            border: 2px solid var(--cyber-light-gray);
+            border-radius: 15px;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.6), transparent);
+            position: relative;
+            transition: all 0.3s ease;
+            aspect-ratio: 2/1; /* 1:2 ratio (height:width) */
+            min-height: 300px;
+        }
+
+        .pipeline-card:hover {
+            border-color: var(--cyber-primary);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+            transform: translateY(-5px);
+        }
+
+        .pipeline-card.tier1-detected {
+            border-color: var(--cyber-yellow);
+            background: linear-gradient(135deg, rgba(255, 221, 0, 0.1), transparent);
+            animation: tier1Pulse 2s ease-in-out infinite alternate;
+        }
+
+        .pipeline-card.tier2-processing {
+            border-color: var(--cyber-blue);
+            background: linear-gradient(135deg, rgba(0, 136, 255, 0.1), transparent);
+            animation: tier2Processing 1.5s ease-in-out infinite;
+        }
+
+        .pipeline-card.tier2-complete {
+            border-color: var(--cyber-red);
+            background: linear-gradient(135deg, rgba(255, 0, 68, 0.15), transparent);
+            box-shadow: 0 0 25px rgba(255, 0, 68, 0.4);
+        }
+
+        @keyframes tier1Pulse {
+            0% { box-shadow: 0 0 15px rgba(255, 221, 0, 0.3); }
+            100% { box-shadow: 0 0 25px rgba(255, 221, 0, 0.6); }
+        }
+
+        @keyframes tier2Processing {
+            0% { box-shadow: 0 0 15px rgba(0, 136, 255, 0.3); }
+            50% { box-shadow: 0 0 30px rgba(0, 136, 255, 0.7); }
+            100% { box-shadow: 0 0 15px rgba(0, 136, 255, 0.3); }
+        }
+
+        .pipeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+        }
+
+        .pipeline-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--cyber-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .pipeline-timestamp {
+            font-size: 0.8rem;
+            color: var(--cyber-yellow);
+            font-family: 'Courier New', monospace;
+        }
+
+        .tier1-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(26, 26, 26, 0.5);
+            border-radius: 10px;
+            border-left: 4px solid var(--cyber-yellow);
+        }
+
+        .tier1-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--cyber-yellow);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detection-scores {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .score-item {
+            text-align: center;
+            padding: 8px;
+            background: rgba(26, 26, 26, 0.7);
+            border-radius: 6px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .score-label {
+            font-size: 0.7rem;
+            color: var(--cyber-blue);
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+
+        .score-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--cyber-primary);
+        }
+
+        .tier2-section {
+            border-top: 1px solid rgba(0, 255, 255, 0.2);
+            padding-top: 15px;
+            min-height: 100px;
+        }
+
+        .tier2-status-btn {
+            background: linear-gradient(135deg, rgba(0, 136, 255, 0.2), transparent);
+            color: var(--cyber-blue);
+            border: 2px solid var(--cyber-blue);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .tier2-status-btn.processing {
+            animation: statusPulse 1.5s ease-in-out infinite;
+        }
+
+        .tier2-status-btn.complete {
+            border-color: var(--cyber-green);
+            color: var(--cyber-green);
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.2), transparent);
+        }
+
+        .tier2-status-btn.error {
+            border-color: var(--cyber-red);
+            color: var(--cyber-red);
+            background: linear-gradient(135deg, rgba(255, 0, 68, 0.2), transparent);
+        }
+
+        @keyframes statusPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .tier2-results {
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .threat-assessment {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(26, 26, 26, 0.7);
+            border-radius: 8px;
+        }
+
+        .threat-level-display {
+            font-size: 1.2rem;
+            font-weight: 700;
+            padding: 5px 15px;
+            border-radius: 15px;
+            text-transform: uppercase;
+        }
+
+        .threat-high { 
+            background: var(--cyber-red); 
+            color: white; 
+            box-shadow: 0 0 10px var(--cyber-red);
+        }
+        .threat-medium { 
+            background: var(--cyber-yellow); 
+            color: var(--cyber-dark); 
+            box-shadow: 0 0 10px var(--cyber-yellow);
+        }
+        .threat-low { 
+            background: var(--cyber-green); 
+            color: var(--cyber-dark); 
+            box-shadow: 0 0 10px var(--cyber-green);
+        }
+
         /* Anomaly Frames Section */
         .anomaly-frames {
             margin-top: 30px;
@@ -540,9 +753,19 @@
                     <img id="liveVideoStream" 
                          src="/video_stream" 
                          alt="Live Video Stream" 
-                         style="width: 100%; max-width: 800px;">
+                         style="width: 100%; max-width: 800px; display: block;"
+                         onload="handleVideoLoad()"
+                         onerror="handleVideoError(this)"
+                         onabort="handleVideoAbort(this)">
                     <div style="margin-top: 10px; font-size: 0.9rem; color: rgba(0, 255, 255, 0.7);">
                         📡 Real-time feed with OpenCV anomaly overlay (🟢 Normal / 🔴 Anomaly)
+                    </div>
+                    <div id="videoStreamStatus" style="margin-top: 5px; font-size: 0.8rem; color: var(--cyber-yellow);">
+                        📹 Initializing camera stream...
+                    </div>
+                    <div style="margin-top: 5px; font-size: 0.7rem; color: rgba(0, 255, 255, 0.5);">
+                        🔄 Auto-refresh: <span id="autoRefreshStatus">OFF</span> | 
+                        📊 Stream FPS: <span id="streamFPS">0</span>
                     </div>
                 </div>
                 
@@ -561,6 +784,12 @@
                     </button>
                     <button class="cyber-btn info-btn" onclick="restartVideoStream()">
                         🔄 REFRESH FEED
+                    </button>
+                    <button class="cyber-btn info-btn" onclick="toggleVideoAutoRefresh()">
+                        ⚡ TOGGLE AUTO-REFRESH
+                    </button>
+                    <button class="cyber-btn" onclick="forceCreatePipelineCard()" style="background: #ff6600; margin-left: 10px;">
+                        🧪 TEST PIPELINE CARD
                     </button>
                 </div>
 
@@ -611,6 +840,24 @@
                     <button class="cyber-btn info-btn" onclick="showSystemStats()">
                         📈 SYSTEM STATS
                     </button>
+                    <button class="cyber-btn start-btn" onclick="testPipelineCard()" style="margin-top: 10px;">
+                        🧪 TEST PIPELINE CARD
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Detection Pipeline Section -->
+        <div class="detection-pipeline">
+            <h2 class="section-title">🔍 REAL-TIME DETECTION PIPELINE</h2>
+            <div style="margin-bottom: 20px; font-size: 0.95rem; color: rgba(0, 255, 255, 0.8);">
+                🧠 Live anomaly detection workflow: Tier 1 Detection → AI Processing → Tier 2 Analysis
+            </div>
+            
+            <div class="pipeline-grid" id="pipelineCards">
+                <div style="text-align: center; padding: 40px; color: var(--cyber-green); grid-column: 1 / -1;">
+                    🛡️ MONITORING STANDBY<br>
+                    <small style="color: rgba(0, 255, 255, 0.7);">Start monitoring to see live detection pipeline...</small>
                 </div>
             </div>
         </div>
@@ -649,17 +896,135 @@
     <script>
         let ws = null;
         let anomalies = [];
+        let pipelineCards = []; // Track active pipeline cards
         let currentVideoFile = null;
         let isMonitoring = false;
         let sessionStartTime = null;
         let frameCount = 0;
         let anomalyCount = 0;
+        
+        // Video stream management
+        let videoRefreshInterval = null;
+        let videoLoadAttempts = 0;
+        let lastVideoLoad = 0;
+        let streamFPS = 0;
+        let fpsCounter = 0;
 
-        // Initialize dashboard
+        // Video stream event handlers
+        function handleVideoLoad() {
+            const now = Date.now();
+            lastVideoLoad = now;
+            videoLoadAttempts = 0;
+            fpsCounter++;
+            
+            document.getElementById('videoStreamStatus').textContent = '📹 Live stream active';
+            document.getElementById('videoStreamStatus').style.color = 'var(--cyber-green)';
+            
+            console.log('✅ Video stream frame loaded');
+        }
+
+        function handleVideoError(imgElement) {
+            videoLoadAttempts++;
+            console.error(`❌ Video stream error (attempt ${videoLoadAttempts})`);
+            
+            document.getElementById('videoStreamStatus').textContent = `❌ Stream error (${videoLoadAttempts} attempts)`;
+            document.getElementById('videoStreamStatus').style.color = 'var(--cyber-red)';
+            
+            // Try different fallback URLs
+            const fallbackUrls = [
+                '/test_stream?' + Date.now(),
+                '/video_stream?' + Date.now(),
+                'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQ4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQ4MCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DYW1lcmEgVW5hdmFpbGFibGU8L3RleHQ+PC9zdmc+'
+            ];
+            
+            if (videoLoadAttempts < fallbackUrls.length) {
+                setTimeout(() => {
+                    imgElement.src = fallbackUrls[videoLoadAttempts - 1];
+                }, 1000);
+            }
+        }
+
+        function handleVideoAbort(imgElement) {
+            console.warn('⚠️ Video stream aborted');
+            document.getElementById('videoStreamStatus').textContent = '⚠️ Stream connection interrupted';
+            document.getElementById('videoStreamStatus').style.color = 'var(--cyber-yellow)';
+        }
+
+        // Smart video refresh system
+        function startVideoAutoRefresh() {
+            if (videoRefreshInterval) {
+                clearInterval(videoRefreshInterval);
+            }
+            
+            videoRefreshInterval = setInterval(() => {
+                const streamImg = document.getElementById('liveVideoStream');
+                const now = Date.now();
+                
+                // If no new frames for 3 seconds, refresh
+                if (now - lastVideoLoad > 3000) {
+                    console.log('🔄 Auto-refreshing stuck video stream...');
+                    refreshVideoStream();
+                }
+            }, 2000); // Check every 2 seconds
+            
+            document.getElementById('autoRefreshStatus').textContent = 'ON';
+            document.getElementById('autoRefreshStatus').style.color = 'var(--cyber-green)';
+        }
+
+        function stopVideoAutoRefresh() {
+            if (videoRefreshInterval) {
+                clearInterval(videoRefreshInterval);
+                videoRefreshInterval = null;
+            }
+            
+            document.getElementById('autoRefreshStatus').textContent = 'OFF';
+            document.getElementById('autoRefreshStatus').style.color = 'var(--cyber-red)';
+        }
+
+        function refreshVideoStream() {
+            const streamImg = document.getElementById('liveVideoStream');
+            const statusEl = document.getElementById('videoStreamStatus');
+            
+            statusEl.textContent = '🔄 Refreshing video stream...';
+            statusEl.style.color = 'var(--cyber-yellow)';
+            
+            // Force refresh with cache busting
+            const timestamp = Date.now();
+            streamImg.src = `/video_stream?t=${timestamp}&refresh=true`;
+            
+            videoLoadAttempts = 0;
+        }
+
+        // FPS monitoring
+        function startFPSMonitoring() {
+            setInterval(() => {
+                streamFPS = fpsCounter;
+                fpsCounter = 0;
+                document.getElementById('streamFPS').textContent = streamFPS;
+                
+                // Color code FPS
+                const fpsElement = document.getElementById('streamFPS');
+                if (streamFPS > 15) {
+                    fpsElement.style.color = 'var(--cyber-green)';
+                } else if (streamFPS > 5) {
+                    fpsElement.style.color = 'var(--cyber-yellow)';
+                } else {
+                    fpsElement.style.color = 'var(--cyber-red)';
+                }
+            }, 1000);
+        }
         document.addEventListener('DOMContentLoaded', function() {
             updateConnectionStatus(false);
             refreshAnomalies();
             startUptimeCounter();
+            startFPSMonitoring();
+            
+            // DON'T auto-start video stream - wait for user to click "START MONITORING"
+            // refreshVideoStream(); // REMOVED
+            
+            // Show placeholder for video
+            document.getElementById('videoStreamStatus').textContent = '📹 Click "START MONITORING" to begin live feed';
+            document.getElementById('videoStreamStatus').style.color = 'var(--cyber-blue)';
         });
 
         function updateConnectionStatus(connected) {
@@ -697,10 +1062,19 @@
             
             // Clear current session data when starting new monitoring
             anomalies = [];
+            pipelineCards = [];
             frameCount = 0;
             anomalyCount = 0;
             updateStats();
-            displayAnomalyFrames(); // Clear display
+            displayAnomalyFrames();
+            updatePipelineDisplay(); // Clear pipeline cards
+            
+            // NOW start the video stream when user clicks START MONITORING
+            refreshVideoStream();
+            
+            // Update video stream status
+            document.getElementById('videoStreamStatus').textContent = '📹 Connecting to camera...';
+            document.getElementById('videoStreamStatus').style.color = 'var(--cyber-yellow)';
             
             ws = new WebSocket('ws://localhost:8000/stream_video?username=dashboard_user');
             
@@ -711,6 +1085,13 @@
                 document.getElementById('status').className = 'status normal';
                 document.getElementById('currentDetails').textContent = '🛡️ Neural networks analyzing video feed for anomalous patterns... (Current session only)';
                 
+                // Start video auto-refresh when monitoring starts
+                startVideoAutoRefresh();
+                
+                // Update video stream status
+                document.getElementById('videoStreamStatus').textContent = '📹 Camera connected - Live feed active';
+                document.getElementById('videoStreamStatus').style.color = 'var(--cyber-green)';
+                
                 // Show video playback section
                 document.getElementById('videoPlaybackSection').style.display = 'block';
             };
@@ -719,11 +1100,31 @@
                 try {
                     const data = JSON.parse(event.data);
                     
+                    // 🚨🚨🚨 EXTREME DEBUG LOGGING 🚨🚨🚨
+                    console.log('🔥🔥🔥 WEBSOCKET MESSAGE RECEIVED 🔥🔥🔥');
+                    console.log('📨 Raw event data:', event.data);
+                    console.log('📊 Parsed data:', data);
+                    console.log('🎯 Status check:', data.status);
+                    console.log('🎯 Status type:', typeof data.status);
+                    console.log('🎯 Status === "Suspected Anomaly"?', data.status === 'Suspected Anomaly');
+                    
                     // Update frame count
                     frameCount++;
                     
                     // Display JSON output
                     document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
+                    
+                    // 🎯 PIPELINE CARD CREATION: ONLY for "Suspected Anomaly" status
+                    if (data.status === 'Suspected Anomaly') {
+                        console.log('🚨🚨🚨 SUSPECTED ANOMALY DETECTED - CREATING PIPELINE CARD NOW! 🚨🚨🚨');
+                        console.log('📋 Full data for card creation:', JSON.stringify(data, null, 2));
+                        
+                        // FORCE CREATE PIPELINE CARD
+                        createPipelineCard(data);
+                        console.log('✅✅✅ PIPELINE CARD CREATION FORCED! ✅✅✅');
+                    } else {
+                        console.log(`ℹ️ Status is "${data.status}" - not creating pipeline card`);
+                    }
                     
                     if (data.error) {
                         document.getElementById('currentDetails').textContent = '⚠️ ERROR: ' + data.error;
@@ -736,10 +1137,22 @@
                         currentVideoFile = data.video_file;
                     }
 
-                    // Handle anomaly detection
-                    if (data.status === 'Suspected Anomaly') {
-                        handleAnomalyDetection(data);
+                    // Handle different message types
+                    if (data.type === 'tier2_analysis') {
+                        // Handle Tier 2 analysis results
+                        console.log('🔬 Handling Tier 2 Results:', data);
+                        handleTier2Results(data);
+                    } else if (data.type === 'tier2_start') {
+                        // Handle Tier 2 start notification
+                        console.log('🔬 Handling Tier 2 Start:', data);
+                        handleTier2Start(data);
+                    } else if (data.status === 'Suspected Anomaly') {
+                        // Handle Tier 1 anomaly detection
+                        console.log('🚨 Handling Tier 1 Detection:', data);
+                        handleTier1Detection(data);
                     } else {
+                        // Handle normal status
+                        console.log('✅ Handling Normal Status:', data);
                         handleNormalStatus(data);
                     }
 
@@ -777,8 +1190,15 @@
             };
         }
 
-        function handleAnomalyDetection(data) {
-            console.log('🚨 CURRENT SESSION ANOMALY DETECTED:', data);
+        function handleTier1Detection(data) {
+            console.log('🚨 TIER 1 ANOMALY DETECTED:', data);
+            console.log('🔍 Data structure check:', {
+                frame_id: data.frame_id,
+                timestamp: data.timestamp,
+                status: data.status,
+                details: data.details,
+                tier1_components: data.tier1_components
+            });
             
             anomalyCount++;
             
@@ -797,7 +1217,16 @@
             const details = data.details || 'Anomalous behavior detected by AI analysis';
             document.getElementById('currentDetails').textContent = `🚨 CURRENT SESSION ALERT: ${details}`;
             
-            // Add to CURRENT SESSION anomaly frames ONLY
+            // 🎯 CRITICAL: Create pipeline card for Tier 1 detection
+            console.log('🃏 About to create pipeline card with data:', data);
+            try {
+                createPipelineCard(data);
+                console.log('✅ Pipeline card creation completed');
+            } catch (error) {
+                console.error('❌ Error creating pipeline card:', error);
+            }
+            
+            // Add to anomaly frames (existing functionality)
             if (data.frame_count || data.timestamp || data.frame_file) {
                 const enhancedData = {
                     ...data,
@@ -807,18 +1236,434 @@
                     reasoning_summary: data.tier2_analysis?.reasoning_summary || 'Analyzing...',
                     visual_score: data.tier1_result?.confidence || 0.5,
                     audio_score: data.tier1_result?.audio_detected ? 0.8 : 0.2,
-                    current_session: true // Mark as current session
+                    current_session: true
                 };
                 
-                // Only add to current session (no historical data)
                 anomalies.unshift(enhancedData);
-                anomalies = anomalies.slice(0, 20); // Keep only recent from current session
+                anomalies = anomalies.slice(0, 20);
                 displayAnomalyFrames();
                 
                 playAlertSound();
             }
             
             updateStats();
+        }
+
+        function handleTier2Start(data) {
+            console.log('🔬 TIER 2 ANALYSIS STARTING:', data);
+            updatePipelineCardTier2Status(data.frame_id, 'processing');
+        }
+
+        function handleTier2Results(data) {
+            console.log('✅ TIER 2 ANALYSIS COMPLETE:', data);
+            console.log('📊 Tier 2 data received:', JSON.stringify(data, null, 2));
+            
+            // SIMPLE APPROACH: Update the MOST RECENT pipeline card that doesn't have Tier 2 data yet
+            const cardToUpdate = pipelineCards.find(card => !card.tier2Data);
+            
+            if (cardToUpdate) {
+                console.log('🎯 Updating card:', cardToUpdate.id);
+                
+                // Update the card data
+                cardToUpdate.tier2Data = data;
+                
+                // Find the HTML element
+                const cardElement = document.getElementById(cardToUpdate.id);
+                if (cardElement) {
+                    console.log('✅ Found card element, updating HTML');
+                    
+                    // Find the tier2-section and update it
+                    const tier2Section = cardElement.querySelector('.tier2-section');
+                    if (tier2Section) {
+                        const threatLevel = getThreatLevel(data.threat_severity_index);
+                        
+                        tier2Section.innerHTML = `
+                            <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px;">
+                                ✅ TIER 2 AI ANALYSIS COMPLETE
+                            </div>
+                            <div style="background: rgba(0, 255, 0, 0.1); padding: 10px; border-radius: 5px; margin-bottom: 8px;">
+                                <div style="color: #00ffff; font-weight: bold;">🎯 Threat Level: 
+                                    <span style="color: ${threatLevel === 'HIGH' ? '#ff0000' : threatLevel === 'MEDIUM' ? '#ffff00' : '#00ff00'};">
+                                        ${threatLevel}
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="background: rgba(26, 26, 26, 0.7); padding: 10px; border-radius: 5px; margin-bottom: 8px;">
+                                <div style="color: #ff6b6b; font-weight: bold;">🤖 AI Analysis:</div>
+                                <div style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem; margin-top: 5px;">
+                                    ${data.reasoning_summary || 'Analysis complete'}
+                                </div>
+                            </div>
+                            <div style="color: #ffff00; font-size: 0.8rem;">
+                                📊 Scores: Visual ${((data.visual_score || 0.5) * 100).toFixed(0)}% | 
+                                Audio ${((data.audio_score || 0.5) * 100).toFixed(0)}% | 
+                                Multimodal ${((data.multimodal_agreement || 0.5) * 100).toFixed(0)}%
+                            </div>
+                        `;
+                        
+                        console.log('🎉 TIER 2 RESULTS SUCCESSFULLY UPDATED IN PIPELINE CARD!');
+                    } else {
+                        console.error('❌ Could not find tier2-section in card');
+                    }
+                } else {
+                    console.error('❌ Could not find card element with ID:', cardToUpdate.id);
+                }
+            } else {
+                console.error('❌ No pipeline cards available for Tier 2 update');
+                console.log('📋 Current pipeline cards:', pipelineCards.map(c => ({id: c.id, hasTier2: !!c.tier2Data})));
+            }
+            
+            // Also update corresponding anomaly in the frames section (existing code)
+            const anomalyIndex = anomalies.findIndex(a => 
+                a.frame_id === data.frame_id || 
+                Math.abs((a.timestamp || 0) - (data.timestamp || 0)) < 1
+            );
+            
+            if (anomalyIndex !== -1) {
+                anomalies[anomalyIndex].tier2_analysis = data;
+                anomalies[anomalyIndex].threat_level = data.threat_severity_index || 0.5;
+                anomalies[anomalyIndex].reasoning_summary = data.reasoning_summary || 'Analysis complete';
+                displayAnomalyFrames();
+            }
+        }
+
+        function createPipelineCard(tier1Data) {
+            console.log('🃏 Creating pipeline card for SUSPECTED ANOMALY:', tier1Data);
+            
+            // Simple ID generation
+            const cardId = `pipeline-${Date.now()}`;
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Get data safely with fallbacks
+            const tier1Components = tier1Data.tier1_components || {};
+            const poseAnalysis = tier1Components.pose_analysis || {};
+            const audioAnalysis = tier1Components.audio_analysis || {};
+            const sceneAnalysis = tier1Components.scene_analysis || {};
+            
+            console.log('🧩 Components:', { poseAnalysis, audioAnalysis, sceneAnalysis });
+            
+            // Add to pipeline cards array FIRST
+            pipelineCards.unshift({
+                id: cardId,
+                frameId: tier1Data.frame_id || Date.now(),
+                timestamp: tier1Data.timestamp || Date.now() / 1000,
+                tier1Data: tier1Data,
+                tier2Data: null
+            });
+            
+            // Keep only last 5 pipeline cards
+            if (pipelineCards.length > 5) {
+                const oldCard = pipelineCards.pop();
+                const oldElement = document.getElementById(oldCard.id);
+                if (oldElement) oldElement.remove();
+            }
+            
+            console.log(`🎯 Pipeline cards count: ${pipelineCards.length}`);
+            
+            // Find the container
+            const container = document.getElementById('pipelineCards');
+            if (!container) {
+                console.error('❌ Container pipelineCards not found!');
+                return;
+            }
+            
+            console.log('📦 Found container:', container.id);
+            
+            // Create the card HTML directly - RED for true anomalies
+            const cardHtml = `
+                <div class="pipeline-card tier1-detected" id="${cardId}" style="background: rgba(255, 0, 0, 0.15); border: 2px solid #ff0000; margin: 10px; padding: 15px; border-radius: 8px;">
+                    <div style="color: #ff3333; font-weight: bold; margin-bottom: 10px;">
+                        🚨 SUSPECTED ANOMALY #${pipelineCards.length}
+                    </div>
+                    <div style="color: #00ffff; margin-bottom: 8px;">
+                        ⚡ TIER 1 DETECTION [ANOMALY SUSPECTED]
+                    </div>
+                    <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                        <span style="color: ${poseAnalysis.anomaly_detected ? '#00ff00' : '#ffaaaa'};">
+                            Pose: ${poseAnalysis.anomaly_detected ? '✅' : '❌'}
+                        </span>
+                        <span style="color: ${audioAnalysis.available ? '#00ff00' : '#888888'};">
+                            Audio: ${audioAnalysis.available ? '🎤' : '🔇'}
+                        </span>
+                        <span style="color: #ffaa00;">
+                            Scene: ${((sceneAnalysis.anomaly_probability || 0) * 100).toFixed(0)}%
+                        </span>
+                    </div>
+                    <div style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem; margin-bottom: 10px;">
+                        📝 ${tier1Data.details || 'Anomalous behavior detected'}
+                    </div>
+                    <div class="tier2-section">
+                        <div style="color: #ffff00; font-weight: bold;">
+                            🔬 TIER 2 AI ANALYSIS PROCESSING...
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add to the beginning of the container
+            container.insertAdjacentHTML('afterbegin', cardHtml);
+            
+            console.log('✅ Pipeline card HTML inserted for SUSPECTED ANOMALY');
+            console.log('🔍 Container children count:', container.children.length);
+        }
+
+        function updatePipelineDisplay() {
+            console.log('🔄 Updating pipeline display with', pipelineCards.length, 'cards');
+            
+            const pipelineGrid = document.getElementById('pipelineCards');
+            const pipelineContainer = document.getElementById('pipelineContainer');
+            
+            console.log('🔍 Container check:', {
+                pipelineGrid: !!pipelineGrid,
+                pipelineContainer: !!pipelineContainer,
+                pipelineGridId: pipelineGrid?.id,
+                pipelineContainerId: pipelineContainer?.id
+            });
+            
+            // Use whichever container exists
+            const container = pipelineGrid || pipelineContainer;
+            
+            if (!container) {
+                console.error('❌ Neither pipelineCards nor pipelineContainer found!');
+                console.error('🔍 Available elements with "pipeline" in ID:', 
+                    Array.from(document.querySelectorAll('[id*="pipeline"]')).map(el => el.id));
+                return;
+            }
+            
+            console.log('📦 Using container:', container.id);
+            
+            if (pipelineCards.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--cyber-green); grid-column: 1 / -1;">
+                        🛡️ MONITORING STANDBY<br>
+                        <small style="color: rgba(0, 255, 255, 0.7);">Start monitoring to see live detection pipeline...</small>
+                    </div>
+                `;
+                console.log('📭 No pipeline cards to display');
+                return;
+            }
+            
+            let html = '';
+            pipelineCards.forEach((card, index) => {
+                console.log(`🎯 Rendering card ${index}:`, card.id);
+                
+                const tier1Components = card.tier1Data.tier1_components || {};
+                const poseAnalysis = tier1Components.pose_analysis || {};
+                const audioAnalysis = tier1Components.audio_analysis || {};
+                const sceneAnalysis = tier1Components.scene_analysis || {};
+                
+                const timestamp = new Date(card.timestamp * 1000).toLocaleTimeString();
+                const tier2Status = card.tier2Data ? 'complete' : 'processing';
+                const cardClass = card.tier2Data ? 'tier2-complete' : 'tier2-processing';
+                
+                html += `
+                    <div class="pipeline-card ${cardClass}" id="${card.id}">
+                        <div class="pipeline-header">
+                            <div class="pipeline-title">🚨 Anomaly Detection #${index + 1}</div>
+                            <div class="pipeline-timestamp">${timestamp}</div>
+                        </div>
+                        
+                        <div class="tier1-section">
+                            <div class="tier1-title">
+                                ⚡ TIER 1 DETECTION
+                                <span style="color: var(--cyber-red); font-size: 0.8rem;">[ANOMALY SUSPECTED]</span>
+                            </div>
+                            
+                            <div class="detection-scores">
+                                <div class="score-item">
+                                    <div class="score-label">Pose</div>
+                                    <div class="score-value">${poseAnalysis.anomaly_detected ? '✅' : '❌'}</div>
+                                </div>
+                                <div class="score-item">
+                                    <div class="score-label">Audio</div>
+                                    <div class="score-value">${audioAnalysis.available ? '🎤' : '🔇'}</div>
+                                </div>
+                                <div class="score-item">
+                                    <div class="score-label">Scene</div>
+                                    <div class="score-value">${((sceneAnalysis.anomaly_probability || 0) * 100).toFixed(0)}%</div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 10px; font-size: 0.8rem; color: rgba(0, 255, 255, 0.9);">
+                                📝 ${card.tier1Data.details || 'Anomalous behavior detected'}
+                            </div>
+                        </div>
+                        
+                        <div class="tier2-section">
+                            ${card.tier2Data ? `
+                                <button class="tier2-status-btn complete">
+                                    ✅ TIER 2 ANALYSIS COMPLETE
+                                </button>
+                                <div class="tier2-results">
+                                    <div class="threat-assessment">
+                                        <span style="color: var(--cyber-blue);">🎯 Threat Level:</span>
+                                        <div class="threat-level-display ${getThreatClass(card.tier2Data.threat_severity_index)}">
+                                            ${getThreatLevel(card.tier2Data.threat_severity_index)}
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 10px; padding: 10px; background: rgba(26, 26, 26, 0.7); border-radius: 8px;">
+                                        <strong style="color: var(--cyber-purple);">🤖 AI Analysis:</strong><br>
+                                        <span style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem;">
+                                            ${card.tier2Data.reasoning_summary || 'Analysis complete'}
+                                        </span>
+                                    </div>
+                                    <div style="margin-top: 8px; font-size: 0.8rem; color: var(--cyber-yellow);">
+                                        📊 Scores: Visual ${((card.tier2Data.visual_score || 0.5) * 100).toFixed(0)}% | 
+                                        Audio ${((card.tier2Data.audio_score || 0.5) * 100).toFixed(0)}% | 
+                                        Multimodal ${((card.tier2Data.multimodal_agreement || 0.5) * 100).toFixed(0)}%
+                                    </div>
+                                </div>
+                            ` : `
+                                <button class="tier2-status-btn processing">
+                                    <span class="loading"></span> TIER 2 AI ANALYSIS PROCESSING...
+                                </button>
+                                <div class="tier2-results" style="display: none;"></div>
+                            `}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            console.log('✅ Pipeline display updated with', pipelineCards.length, 'cards rendered');
+        }
+
+        // Test function to create a sample pipeline card with REAL data structure
+        function testPipelineCard() {
+            console.log('🧪 Creating test pipeline card with REAL data structure');
+            
+            // Using the EXACT structure from your logs
+            const testData = {
+                "status": "Suspected Anomaly",
+                "details": "Normal: Pose=False(conf=0.50), Scene=0.599(need>0.30), Audio=False [Smoothed from Normal to Suspected Anomaly]",
+                "tier1_components": {
+                    "pose_analysis": {
+                        "anomaly_detected": false,
+                        "summary": "Pose anomaly detected: False",
+                        "raw_score": 0
+                    },
+                    "audio_analysis": {
+                        "transcripts": [],
+                        "available": false,
+                        "summary": "No audio chunk provided",
+                        "transcript_text": ""
+                    },
+                    "scene_analysis": {
+                        "anomaly_probability": 0.599,
+                        "summary": "Scene anomaly probability: 0.599"
+                    },
+                    "fusion_logic": {
+                        "initial_status": "Normal",
+                        "final_status": "Suspected Anomaly",
+                        "smoothing_applied": true,
+                        "details": "Normal: Pose=False(conf=0.50), Scene=0.599(need>0.30), Audio=False [Smoothed from Normal to Suspected Anomaly]"
+                    }
+                },
+                "frame_id": 2215,
+                "fusion_status": "video-only",
+                "timestamp": 1756826952.65,
+                "video_file": "recorded_videos/session_20250902_205720.mp4"
+            };
+            
+            console.log('🎯 Test data structure:', testData);
+            
+            try {
+                createPipelineCard(testData);
+                console.log('✅ Test pipeline card created successfully');
+            } catch (error) {
+                console.error('❌ Error creating test pipeline card:', error);
+            }
+        }
+        
+        function updatePipelineCardTier2Status(frameId, status) {
+            const card = pipelineCards.find(c => c.frameId === frameId);
+            if (card) {
+                card.tier2Status = status;
+                updatePipelineDisplay();
+            }
+        }
+
+        function updatePipelineCardTier2Results(frameId, tier2Data) {
+            console.log('🔬 Updating pipeline card with Tier 2 results for frame:', frameId);
+            console.log('📊 Tier 2 data:', tier2Data);
+            
+            // Find the card in our array
+            const card = pipelineCards.find(c => 
+                c.frameId === frameId || 
+                Math.abs(c.frameId - frameId) < 5 // Allow some tolerance for frame ID matching
+            );
+            
+            if (!card) {
+                console.warn('⚠️ No pipeline card found for frame:', frameId);
+                console.log('🔍 Available cards:', pipelineCards.map(c => c.frameId));
+                return;
+            }
+            
+            console.log('✅ Found matching card:', card.id);
+            
+            // Update the card data
+            card.tier2Data = tier2Data;
+            
+            // Find the HTML element
+            const cardElement = document.getElementById(card.id);
+            if (!cardElement) {
+                console.warn('⚠️ No HTML element found for card:', card.id);
+                return;
+            }
+            
+            // Update the Tier 2 section directly
+            const tier2Section = cardElement.querySelector('[style*="TIER 2 AI ANALYSIS PROCESSING"]')?.parentElement;
+            if (tier2Section) {
+                const threatLevel = getThreatLevel(tier2Data.threat_severity_index);
+                const threatClass = getThreatClass(tier2Data.threat_severity_index);
+                
+                tier2Section.innerHTML = `
+                    <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px;">
+                        ✅ TIER 2 AI ANALYSIS COMPLETE
+                    </div>
+                    <div style="background: rgba(0, 255, 0, 0.1); padding: 10px; border-radius: 5px; margin-bottom: 8px;">
+                        <div style="color: #00ffff; font-weight: bold;">🎯 Threat Level: 
+                            <span style="color: ${threatLevel === 'HIGH' ? '#ff0000' : threatLevel === 'MEDIUM' ? '#ffff00' : '#00ff00'};">
+                                ${threatLevel}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(26, 26, 26, 0.7); padding: 10px; border-radius: 5px; margin-bottom: 8px;">
+                        <div style="color: #ff6b6b; font-weight: bold;">🤖 AI Analysis:</div>
+                        <div style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem; margin-top: 5px;">
+                            ${tier2Data.reasoning_summary || 'Analysis complete'}
+                        </div>
+                    </div>
+                    <div style="color: #ffff00; font-size: 0.8rem;">
+                        📊 Scores: Visual ${((tier2Data.visual_score || 0.5) * 100).toFixed(0)}% | 
+                        Audio ${((tier2Data.audio_score || 0.5) * 100).toFixed(0)}% | 
+                        Multimodal ${((tier2Data.multimodal_agreement || 0.5) * 100).toFixed(0)}%
+                    </div>
+                `;
+                
+                console.log('✅ Tier 2 results updated in pipeline card');
+            } else {
+                console.warn('⚠️ Could not find Tier 2 section in card');
+            }
+        }
+
+        function getThreatLevel(severity) {
+            if (!severity) return 'UNKNOWN';
+            if (severity > 0.7) return 'HIGH';
+            if (severity > 0.4) return 'MEDIUM';
+            return 'LOW';
+        }
+
+        function getThreatClass(severity) {
+            if (!severity) return 'threat-low';
+            if (severity > 0.7) return 'threat-high';
+            if (severity > 0.4) return 'threat-medium';
+            return 'threat-low';
+        }
+
+        function handleAnomalyDetection(data) {
+            // This function is now replaced by handleTier1Detection
+            handleTier1Detection(data);
         }
 
         function handleNormalStatus(data) {
@@ -854,36 +1699,49 @@
                 ws.close(1000, 'User initiated disconnect');
                 ws = null;
             }
+            
+            // Stop video auto-refresh when disconnecting
+            stopVideoAutoRefresh();
+            
             updateConnectionStatus(false);
         }
 
-        async function clearSession() {
+        function clearSession() {
             try {
                 console.log('🧹 Clearing monitoring session...');
                 
-                // Call backend to start new session
-                const response = await fetch('/dashboard/new_session', { method: 'POST' });
-                const result = await response.json();
+                // Clear pipeline cards
+                pipelineCards = [];
+                updatePipelineDisplay();
                 
-                if (result.success) {
-                    // Clear frontend data
-                    anomalies = [];
-                    frameCount = 0;
-                    anomalyCount = 0;
-                    updateStats();
-                    displayAnomalyFrames();
-                    
-                    // Update status
-                    document.getElementById('status').textContent = 'Status: 🧹 SESSION CLEARED';
-                    document.getElementById('status').className = 'status normal';
-                    document.getElementById('currentDetails').textContent = '✅ New monitoring session started - old frames cleared';
-                    
-                    console.log('✅ Session cleared successfully:', result.message);
-                    alert('🧹 Session cleared! Old anomaly frames have been removed.');
-                } else {
-                    console.error('❌ Failed to clear session');
-                    alert('❌ Failed to clear session. Please try again.');
-                }
+                // Call backend to start new session
+                fetch('/dashboard/new_session', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            // Clear frontend data
+                            anomalies = [];
+                            frameCount = 0;
+                            anomalyCount = 0;
+                            updateStats();
+                            displayAnomalyFrames();
+                            
+                            // Update status
+                            document.getElementById('status').textContent = 'Status: 🧹 SESSION CLEARED';
+                            document.getElementById('status').className = 'status normal';
+                            document.getElementById('currentDetails').textContent = '✅ New monitoring session started - old frames cleared';
+                            
+                            console.log('✅ Session cleared successfully:', result.message);
+                            alert('🧹 Session cleared! Old anomaly frames have been removed.');
+                        } else {
+                            console.error('❌ Failed to clear session');
+                            alert('❌ Failed to clear session. Please try again.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Error clearing session:', error);
+                        alert('❌ Error clearing session. Please check console for details.');
+                    });
             } catch (error) {
                 console.error('❌ Error clearing session:', error);
                 alert('❌ Error clearing session. Please check console for details.');
@@ -1055,9 +1913,15 @@
         }
 
         function restartVideoStream() {
-            const streamImg = document.getElementById('liveVideoStream');
-            streamImg.src = '/video_stream?' + new Date().getTime();
-            console.log('🔄 Video stream refreshed');
+            refreshVideoStream();
+        }
+        
+        function toggleVideoAutoRefresh() {
+            if (videoRefreshInterval) {
+                stopVideoAutoRefresh();
+            } else {
+                startVideoAutoRefresh();
+            }
         }
 
         function exportData() {
@@ -1161,6 +2025,50 @@
             }
         });
         
+        // Test function to manually create pipeline card
+        function testPipelineCard() {
+            console.log('🧪 Testing pipeline card creation...');
+            
+            const testTier1Data = {
+                frame_id: Date.now(),
+                timestamp: Date.now() / 1000,
+                status: "Suspected Anomaly",
+                details: "Test anomaly detection for demo purposes",
+                tier1_components: {
+                    pose_analysis: {
+                        anomaly_detected: true,
+                        summary: "Test pose anomaly"
+                    },
+                    audio_analysis: {
+                        available: false,
+                        summary: "No audio available"
+                    },
+                    scene_analysis: {
+                        anomaly_probability: 0.75,
+                        summary: "Test scene anomaly"
+                    }
+                }
+            };
+            
+            // Create test pipeline card
+            createPipelineCard(testTier1Data);
+            
+            // Simulate Tier 2 processing after 3 seconds
+            setTimeout(() => {
+                const testTier2Data = {
+                    frame_id: testTier1Data.frame_id,
+                    threat_severity_index: 0.8,
+                    reasoning_summary: "Test AI analysis: High confidence anomaly detected in test scenario",
+                    visual_score: 0.75,
+                    audio_score: 0.0,
+                    multimodal_agreement: 0.7
+                };
+                
+                console.log('🧪 Simulating Tier 2 completion...');
+                handleTier2Results(testTier2Data);
+            }, 3000);
+        }
+        
         // Video playback function for current session
         function loadSessionVideo() {
             fetch('/anomaly_events?username=dashboard_user')
@@ -1194,6 +2102,45 @@
                     document.getElementById('videoStatus').style.color = 'var(--cyber-red)';
                     console.error('Error loading session video:', error);
                 });
+        }
+        
+        // 🧪 TEST FUNCTION: Force create a pipeline card to test the system
+        function forceCreatePipelineCard() {
+            console.log('🧪 FORCING PIPELINE CARD CREATION FOR TESTING');
+            
+            // Create fake anomaly data to test pipeline card creation
+            const testData = {
+                frame_id: `test_${Date.now()}`,
+                timestamp: Date.now() / 1000,
+                status: "Suspected Anomaly",
+                details: "TEST: Forced anomaly creation for testing pipeline cards",
+                tier1_components: {
+                    pose_analysis: {
+                        anomaly_detected: true,
+                        confidence: 0.85,
+                        details: "TEST: Simulated pose anomaly"
+                    },
+                    audio_analysis: {
+                        available: true,
+                        anomaly_detected: true,
+                        confidence: 0.72
+                    },
+                    scene_analysis: {
+                        anomaly_probability: 0.78,
+                        confidence: 0.91
+                    }
+                }
+            };
+            
+            console.log('🎯 Test data created:', testData);
+            console.log('🚀 Calling createPipelineCard...');
+            
+            try {
+                createPipelineCard(testData);
+                console.log('✅ TEST PIPELINE CARD CREATED SUCCESSFULLY!');
+            } catch (error) {
+                console.error('❌ ERROR CREATING TEST PIPELINE CARD:', error);
+            }
         }
     </script>
 </body>

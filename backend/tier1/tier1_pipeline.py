@@ -13,9 +13,10 @@ from collections import deque
 _anomaly_history = deque(maxlen=3)  # Reduced from 5 to 3 for faster response
 _startup_frame_count = 0  # Track startup frames to prevent initial false positives
 
-def smooth_anomaly_detection(current_status, current_scene_prob, current_pose_anomaly, fusion_details=""):
-    """INTELLIGENT smoothing with adaptive thresholds and context awareness"""
-    global _startup_frame_count
+def apply_temporal_smoothing(current_status, current_scene_prob, current_pose_anomaly, fusion_details):
+    """NO SMOOTHING - Immediate anomaly detection for demo"""
+    global _anomaly_history, _startup_frame_count
+    
     _startup_frame_count += 1
     
     # CRITICAL: Bypass smoothing for audio emergencies
@@ -23,11 +24,15 @@ def smooth_anomaly_detection(current_status, current_scene_prob, current_pose_an
         print(f"🚨 AUDIO EMERGENCY - BYPASSING ALL SMOOTHING")
         return "Suspected Anomaly"
     
-    # Smart startup protection based on activity level
-    startup_threshold = 10 if current_scene_prob < 0.1 else 15  # Reduced from 15/25
-    if _startup_frame_count <= startup_threshold and "AUDIO EMERGENCY" not in fusion_details:
-        print(f"🛡️ Startup protection: frame {_startup_frame_count}/{startup_threshold}")
-        return "Normal"
+    # NO STARTUP PROTECTION - Immediate detection!
+    print(f"� NO SMOOTHING MODE: frame {_startup_frame_count}, status={current_status}")
+    
+    # Return the status immediately without any smoothing
+    if current_status == "Suspected Anomaly":
+        print(f"🚨 IMMEDIATE ANOMALY: scene={current_scene_prob:.3f}, pose={current_pose_anomaly}")
+        return "Suspected Anomaly"
+    
+    return "Normal"
     
     # Add current frame to history
     _anomaly_history.append({
@@ -141,7 +146,7 @@ def run_tier1_continuous(frame, audio_chunk_path):
             fusion_details = f"Fusion failed: {str(e)}"
         
         # Apply smoothing WITH fusion details for audio emergency bypass
-        smoothed_status = smooth_anomaly_detection(initial_status, anomaly_prob, pose_anomaly, fusion_details)
+        smoothed_status = apply_temporal_smoothing(initial_status, anomaly_prob, pose_anomaly, fusion_details)
         
         # Add smoothing info if status changed
         if smoothed_status != initial_status:

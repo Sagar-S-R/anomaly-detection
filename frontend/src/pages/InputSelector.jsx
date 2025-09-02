@@ -20,7 +20,7 @@ const InputSelector = ({
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 bg-green-400 rounded-full cyber-pulse"></div>
               <span className="text-green-400 font-semibold text-cyber-glow font-mono uppercase tracking-wider">
-                {inputMode === 'live' && 'LIVE CAMERA'}
+                {inputMode === 'live' && 'LIVE CAMERA (DISABLED)'}
                 {inputMode === 'cctv' && 'CCTV STREAM'}
                 {inputMode === 'upload' && 'PROCESSING VIDEO'}
               </span>
@@ -36,8 +36,9 @@ const InputSelector = ({
       </div>
 
       {!isConnected ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Live Camera Option */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Live Camera Option - HIDDEN FOR NOW */}
+          {false && (
           <div className="cyber-card bg-gradient-to-br from-green-900/20 to-green-800/10 border-green-400/30 hover:border-green-400/60 transition-all duration-300 group">
             <div className="text-center p-8">
               <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-500 rounded-2xl flex items-center justify-center text-black text-3xl mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
@@ -55,6 +56,7 @@ const InputSelector = ({
               </button>
             </div>
           </div>
+          )}
 
           {/* CCTV Option */}
           <div className="cyber-card bg-gradient-to-br from-cyan-900/20 to-cyan-800/10 border-cyan-400/30 hover:border-cyan-400/60 transition-all duration-300 group">

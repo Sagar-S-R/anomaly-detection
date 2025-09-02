@@ -1055,11 +1055,25 @@ async def stream_video(websocket: WebSocket):
             try:
                 tier1_result = run_tier1_continuous(frame, audio_chunk_path)
                 
-                # 🔍 DETAILED TIER 1 LOGGING
+                # �️ SAFETY CHECK: Ensure tier1_result is valid
+                if tier1_result is None:
+                    print("❌ tier1_result is None, creating default result")
+                    tier1_result = {
+                        "status": "Normal",
+                        "details": "Default result due to processing error",
+                        "tier1_components": {
+                            "pose_analysis": {"anomaly_detected": False, "summary": "Error"},
+                            "audio_analysis": {"available": False, "summary": "Error"},
+                            "scene_analysis": {"anomaly_probability": 0.0, "summary": "Error"},
+                            "fusion_logic": {"initial_status": "Normal", "final_status": "Normal"}
+                        }
+                    }
+                
+                # �🔍 DETAILED TIER 1 LOGGING
                 print(f"🔍 Tier1 Result: {json.dumps(tier1_result, indent=2)}")
                 
-                status = tier1_result["status"]
-                details = tier1_result["details"]
+                status = tier1_result.get("status", "Normal")
+                details = tier1_result.get("details", "No details")
                 
                 if status == "Suspected Anomaly":
                     # CONSOLIDATED: Use SessionManager for anomaly cooldown tracking
@@ -1225,10 +1239,21 @@ async def stream_video(websocket: WebSocket):
                 # Send result via WebSocket
                 try:
                     if websocket.client_state.name == "CONNECTED":
+                        # 🚨 EXTREME DEBUG: Log ALL WebSocket sends
+                        print(f"🔥 SENDING WEBSOCKET MESSAGE:")
+                        print(f"📨 Status: {tier1_result.get('status')}")
+                        print(f"📨 Details: {tier1_result.get('details')}")
+                        print(f"📨 Frame ID: {tier1_result.get('frame_id')}")
+                        print(f"📨 Message size: {len(str(tier1_result))} chars")
+                        
                         await websocket.send_json(tier1_result)
-                        # Only log when anomaly detected to avoid spam
+                        print(f"✅ WEBSOCKET MESSAGE SENT SUCCESSFULLY!")
+                        
+                        # Log ALL messages, not just anomalies
                         if tier1_result.get("status") == "Suspected Anomaly":
-                            print(f"📤 Tier 1 ANOMALY data sent to frontend: {tier1_result.get('status')} - {tier1_result.get('details', '')}")
+                            print(f"🚨🚨� ANOMALY WEBSOCKET SENT: {tier1_result.get('status')} - {tier1_result.get('details', '')}")
+                        else:
+                            print(f"ℹ️ Normal WebSocket sent: {tier1_result.get('status')}")
                     else:
                         print("WebSocket not connected, stopping")
                         break
@@ -1777,6 +1802,15 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
             # Get detection results
             tier1_result = run_tier1_continuous(frame, audio_chunk_path)
             
+            # SAFETY CHECK: Handle None result from tier1 (uploaded video)
+            if tier1_result is None:
+                print("⚠️ Uploaded video Tier1 returned None, using fallback")
+                tier1_result = {
+                    "status": "Normal",
+                    "details": "Monitoring...",
+                    "fusion_status": fusion_status
+                }
+            
             status = tier1_result.get("status", "Normal")
             details = tier1_result.get("details", "Monitoring...")
             
@@ -2025,6 +2059,15 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
             
             # Get detection results
             tier1_result = run_tier1_continuous(frame, audio_chunk_path)
+            
+            # SAFETY CHECK: Handle None result from tier1 (CCTV)
+            if tier1_result is None:
+                print("⚠️ CCTV Tier1 returned None, using fallback")
+                tier1_result = {
+                    "status": "Normal", 
+                    "details": "Monitoring...",
+                    "fusion_status": fusion_status
+                }
             
             status = tier1_result.get("status", "Normal")
             details = tier1_result.get("details", "Monitoring...")
