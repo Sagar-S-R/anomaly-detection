@@ -246,3 +246,24 @@ def transcribe_large(audio_path):
         except:
             pass
         return ""
+
+# AudioCapture alias for compatibility
+AudioCapture = AudioStream
+
+class MockAudio:
+    """Mock audio class for testing when audio is unavailable"""
+    def __init__(self):
+        self.running = False
+        print("MockAudio initialized for testing")
+    
+    def start(self):
+        self.running = True
+        print("MockAudio started")
+        
+    def get_chunk(self):
+        """Mock method that returns None - no audio data"""
+        return None
+    
+    def stop(self):
+        self.running = False
+        print("MockAudio stopped")
