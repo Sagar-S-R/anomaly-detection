@@ -872,19 +872,34 @@ async def stream_video(websocket: WebSocket):
     
     if is_dashboard:
         print(f"🎛️ DASHBOARD MODE activated for user: {current_username}")
+        # Create session with SessionManager first (moved up to fix UnboundLocalError)
+        session_id = session_manager.create_session(current_username, "live_stream")
+        session = session_manager.get_session(session_id)
+        
+        if not session:
+            await websocket.send_json({"error": "Failed to create session"})
+            return
+        
         dashboard_mode.start_dashboard_session()
+        # Check if we should continue existing session or start new one
+        if dashboard_mode.should_continue_session():
+            print(f"🔄 Dashboard: Continuing EXISTING monitoring session {dashboard_mode.current_session_id}")
+            # Update the session_id for the existing monitoring session but keep frames
+            dashboard_mode.current_session_id = session_id
+        else:
+            print(f"🚀 Dashboard: Starting NEW monitoring session (clearing old frames)")
+            dashboard_mode.start_new_monitoring_session(session_id, f"dashboard_recording_{int(time.time())}.mp4")
     else:
-        print(f"� USER MODE activated for user: {current_username}")
+        print(f"👤 USER MODE activated for user: {current_username}")
+        # Create session for non-dashboard users
+        session_id = session_manager.create_session(current_username, "live_stream")
+        session = session_manager.get_session(session_id)
+        
+        if not session:
+            await websocket.send_json({"error": "Failed to create session"})
+            return
     
-    print(f"�🔌 WebSocket connected for user: {current_username} ({'Dashboard' if is_dashboard else 'User'} Mode)")
-    
-    # Create session with SessionManager
-    session_id = session_manager.create_session(current_username, "live_stream")
-    session = session_manager.get_session(session_id)
-    
-    if not session:
-        await websocket.send_json({"error": "Failed to create session"})
-        return
+    print(f"🔌 WebSocket connected for user: {current_username} ({'Dashboard' if is_dashboard else 'User'} Mode)")
     
     session_stop_event = session['stop_event']
     
@@ -976,15 +991,14 @@ async def stream_video(websocket: WebSocket):
     height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = video_cap.get(cv2.CAP_PROP_FPS) or 30
     
-    # Setup video recording
+    # Setup video recording using existing session_id
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_id = f"live_session_{timestamp}"
     video_filename = f"recorded_videos/session_{timestamp}.mp4"
     
-    # Save session metadata to MongoDB
+    # Save session metadata to MongoDB (use existing session_id)
     session_metadata = {
         "session_id": session_id,
-        "session_type": "live_camera",
+        "session_type": "live_camera", 
         "start_time": datetime.now().isoformat(),
         "video_file": video_filename,
         "status": "active"
@@ -1242,6 +1256,11 @@ async def stream_video(websocket: WebSocket):
     finally:
         # Cleanup session using SessionManager
         print(f"🧹 Cleaning up session: {session_id}")
+        
+        # Stop dashboard monitoring session if dashboard mode
+        if is_dashboard:
+            dashboard_mode.stop_monitoring_session()
+            print("🎛️ Dashboard monitoring session stopped")
         
         # Unregister WebSocket connection
         session_manager.unregister_websocket(current_username)
@@ -1507,6 +1526,18 @@ async def get_anomaly_event(event_index: int, username: str = None):
 async def dashboard():
     """Serve the anomaly detection dashboard"""
     return FileResponse("dashboard.html")
+
+@app.post("/dashboard/new_session")
+async def start_new_dashboard_session():
+    """Start a new monitoring session (clears old anomaly frames)"""
+    import uuid
+    new_session_id = str(uuid.uuid4())
+    dashboard_mode.force_new_monitoring_session(new_session_id, f"dashboard_recording_{int(time.time())}.mp4")
+    return {
+        "success": True,
+        "message": "New monitoring session started - old frames cleared",
+        "session_id": new_session_id
+    }
 
 @app.get("/")
 async def root():

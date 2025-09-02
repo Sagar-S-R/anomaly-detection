@@ -553,6 +553,9 @@
                     <button class="cyber-btn stop-btn" onclick="disconnectWebSocket()">
                         🛑 STOP MONITORING
                     </button>
+                    <button class="cyber-btn info-btn" onclick="clearSession()">
+                        🧹 CLEAR SESSION
+                    </button>
                     <button class="cyber-btn info-btn" onclick="toggleStreamDisplay()">
                         👁️ TOGGLE STREAM
                     </button>
@@ -613,15 +616,31 @@
         </div>
 
         <!-- Anomaly Frames Section -->
+                <!-- Anomaly Frames Section -->
         <div class="anomaly-frames">
-            <h2 class="section-title">🚨 ANOMALY FRAME ANALYSIS</h2>
+            <h2 class="section-title">🚨 CURRENT SESSION ANOMALY FRAMES</h2>
             <div style="margin-bottom: 20px; font-size: 0.95rem; color: rgba(0, 255, 255, 0.8);">
-                📸 Real-time captured frames showing detected anomalies with AI reasoning
+                📸 Live captured frames from current monitoring session only
+                <div style="margin-top: 10px; font-size: 0.85rem; color: rgba(255, 221, 0, 0.8);">
+                    ⚠️ Frames clear when new monitoring session starts
+                </div>
             </div>
+            
+            <!-- Session Video Playback Controls -->
+            <div id="videoPlaybackSection" style="display: none; margin-bottom: 20px; padding: 15px; border: 2px solid var(--cyber-blue); border-radius: 10px; background: rgba(26, 26, 26, 0.3);">
+                <h3 style="color: var(--cyber-blue); margin-bottom: 10px;">📹 Session Video Playback</h3>
+                <video id="sessionVideo" controls style="width: 100%; max-width: 600px; border-radius: 8px; border: 2px solid var(--cyber-blue);">
+                    Your browser does not support the video tag.
+                </video>
+                <div style="margin-top: 10px;">
+                    <button class="cyber-btn info-btn" onclick="loadSessionVideo()" style="width: auto; margin-right: 10px;">Load Current Session Video</button>
+                    <span id="videoStatus" style="color: var(--cyber-green); font-size: 0.9rem;"></span>
+                </div>
+            </div>
+            
             <div class="frame-grid" id="anomalyFrames">
                 <div style="text-align: center; padding: 40px; color: var(--cyber-green); grid-column: 1 / -1;">
-                    🛡️ NO ANOMALIES DETECTED<br>
-                    <small style="color: rgba(0, 255, 255, 0.7);">Monitoring for suspicious activity...</small>
+                    🎯 Start monitoring to see live anomaly detection frames
                 </div>
             </div>
         </div>
@@ -676,18 +695,24 @@
                 return;
             }
             
+            // Clear current session data when starting new monitoring
+            anomalies = [];
             frameCount = 0;
             anomalyCount = 0;
             updateStats();
+            displayAnomalyFrames(); // Clear display
             
             ws = new WebSocket('ws://localhost:8000/stream_video?username=dashboard_user');
             
             ws.onopen = function(event) {
-                console.log('🔌 WebSocket connected');
+                console.log('🔌 WebSocket connected - NEW MONITORING SESSION STARTED');
                 updateConnectionStatus(true);
-                document.getElementById('status').textContent = 'Status: 🔍 ACTIVE MONITORING';
+                document.getElementById('status').textContent = 'Status: 🔍 ACTIVE MONITORING (New Session)';
                 document.getElementById('status').className = 'status normal';
-                document.getElementById('currentDetails').textContent = '🛡️ Neural networks analyzing video feed for anomalous patterns...';
+                document.getElementById('currentDetails').textContent = '🛡️ Neural networks analyzing video feed for anomalous patterns... (Current session only)';
+                
+                // Show video playback section
+                document.getElementById('videoPlaybackSection').style.display = 'block';
             };
 
             ws.onmessage = function(event) {
@@ -753,7 +778,7 @@
         }
 
         function handleAnomalyDetection(data) {
-            console.log('🚨 ANOMALY DETECTED:', data);
+            console.log('🚨 CURRENT SESSION ANOMALY DETECTED:', data);
             
             anomalyCount++;
             
@@ -764,27 +789,36 @@
             
             // Update video stream styling
             const liveStream = document.getElementById('liveVideoStream');
-            liveStream.className = 'anomaly-border';
+            if (liveStream) {
+                liveStream.className = 'anomaly-border';
+            }
             
             // Update details
             const details = data.details || 'Anomalous behavior detected by AI analysis';
-            document.getElementById('currentDetails').textContent = `🚨 ALERT: ${details}`;
+            document.getElementById('currentDetails').textContent = `🚨 CURRENT SESSION ALERT: ${details}`;
             
-            // Add to anomaly frames if it has frame data
+            // Add to CURRENT SESSION anomaly frames ONLY
             if (data.frame_count || data.timestamp || data.frame_file) {
                 const enhancedData = {
                     ...data,
                     id: Date.now(),
                     detected_at: new Date().toISOString(),
-                    threat_level: data.threat_severity_index || 0.7
+                    threat_level: data.tier2_analysis?.threat_severity_index || data.threat_level || 0.5,
+                    reasoning_summary: data.tier2_analysis?.reasoning_summary || 'Analyzing...',
+                    visual_score: data.tier1_result?.confidence || 0.5,
+                    audio_score: data.tier1_result?.audio_detected ? 0.8 : 0.2,
+                    current_session: true // Mark as current session
                 };
                 
+                // Only add to current session (no historical data)
                 anomalies.unshift(enhancedData);
-                anomalies = anomalies.slice(0, 20); // Keep only last 20
+                anomalies = anomalies.slice(0, 20); // Keep only recent from current session
                 displayAnomalyFrames();
                 
                 playAlertSound();
             }
+            
+            updateStats();
         }
 
         function handleNormalStatus(data) {
@@ -821,6 +855,39 @@
                 ws = null;
             }
             updateConnectionStatus(false);
+        }
+
+        async function clearSession() {
+            try {
+                console.log('🧹 Clearing monitoring session...');
+                
+                // Call backend to start new session
+                const response = await fetch('/dashboard/new_session', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Clear frontend data
+                    anomalies = [];
+                    frameCount = 0;
+                    anomalyCount = 0;
+                    updateStats();
+                    displayAnomalyFrames();
+                    
+                    // Update status
+                    document.getElementById('status').textContent = 'Status: 🧹 SESSION CLEARED';
+                    document.getElementById('status').className = 'status normal';
+                    document.getElementById('currentDetails').textContent = '✅ New monitoring session started - old frames cleared';
+                    
+                    console.log('✅ Session cleared successfully:', result.message);
+                    alert('🧹 Session cleared! Old anomaly frames have been removed.');
+                } else {
+                    console.error('❌ Failed to clear session');
+                    alert('❌ Failed to clear session. Please try again.');
+                }
+            } catch (error) {
+                console.error('❌ Error clearing session:', error);
+                alert('❌ Error clearing session. Please check console for details.');
+            }
         }
 
         function displayAnomalyFrames() {
@@ -1093,6 +1160,41 @@
                 ws.close(1000, 'Page unloading');
             }
         });
+        
+        // Video playback function for current session
+        function loadSessionVideo() {
+            fetch('/anomaly_events?username=dashboard_user')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.stats && data.stats.current_video_file) {
+                        const videoFile = data.stats.current_video_file;
+                        const videoElement = document.getElementById('sessionVideo');
+                        const statusElement = document.getElementById('videoStatus');
+                        
+                        videoElement.src = `/recorded_videos/${videoFile}`;
+                        statusElement.textContent = `📹 Loading: ${videoFile}`;
+                        statusElement.style.color = 'var(--cyber-yellow)';
+                        
+                        videoElement.onloadeddata = function() {
+                            statusElement.textContent = `✅ Ready: ${videoFile}`;
+                            statusElement.style.color = 'var(--cyber-green)';
+                        };
+                        
+                        videoElement.onerror = function() {
+                            statusElement.textContent = `❌ Error loading: ${videoFile}`;
+                            statusElement.style.color = 'var(--cyber-red)';
+                        };
+                    } else {
+                        document.getElementById('videoStatus').textContent = '⚠️ No current session video available';
+                        document.getElementById('videoStatus').style.color = 'var(--cyber-yellow)';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('videoStatus').textContent = '❌ Error loading video';
+                    document.getElementById('videoStatus').style.color = 'var(--cyber-red)';
+                    console.error('Error loading session video:', error);
+                });
+        }
     </script>
 </body>
 </html>
