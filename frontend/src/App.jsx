@@ -41,6 +41,8 @@ function App() {
   const [showJsonPanel, setShowJsonPanel] = useState(false);
   const [showVideoStream, setShowVideoStream] = useState(true);
   const [videoFrame, setVideoFrame] = useState(null); // Store current video frame from WebSocket
+  const [tier2InProgress, setTier2InProgress] = useState(false); // Track if Tier 2 analysis is running
+  const [tier2Timeout, setTier2Timeout] = useState(null); // Track timeout for Tier 2 analysis
   
   // Input method management
   const [inputMode, setInputMode] = useState('none'); // 'none', 'live', 'cctv', 'upload'
@@ -243,18 +245,53 @@ function App() {
           setCurrentVideoFile(data.video_file);
         }
 
+        // Handle Tier 2 analysis start notification
+        if (data.type === 'tier2_start') {
+          console.log('🔬 Tier 2 Analysis STARTING:', data);
+          setTier2InProgress(true);
+          setCurrentDetails(`🧠 Advanced AI analysis starting for frame ${data.frame_id}...`);
+          
+          // Set timeout to reset Tier 2 status if analysis takes too long (60 seconds)
+          if (tier2Timeout) {
+            clearTimeout(tier2Timeout);
+          }
+          const timeoutId = setTimeout(() => {
+            console.warn('⏰ Tier 2 analysis timeout - resetting status');
+            setTier2InProgress(false);
+            setCurrentDetails('Tier 2 analysis timed out - resuming normal monitoring...');
+          }, 60000);
+          setTier2Timeout(timeoutId);
+          
+          return;
+        }
+
         // Handle Tier 2 analysis results
         if (data.type === 'tier2_analysis') {
           console.log('🔬 Received Tier 2 Analysis:', data);
+          setTier2InProgress(false); // Analysis completed
+          
+          // Clear timeout since analysis completed
+          if (tier2Timeout) {
+            clearTimeout(tier2Timeout);
+            setTier2Timeout(null);
+          }
           
           if (data.error) {
-            setCurrentDetails(`❌ AI Analysis Failed: ${data.error}`);
+            setCurrentDetails(`❌ Tier 2 AI Analysis Failed: ${data.error}`);
+            setAnomalyStatus('Normal'); // Reset status after failed analysis
           } else {
             const threatLevel = data.threat_severity_index || 0.5;
             const threatPercent = (threatLevel * 100).toFixed(0);
             const severity = threatLevel > 0.7 ? 'HIGH' : threatLevel > 0.4 ? 'MEDIUM' : 'LOW';
             
-            setCurrentDetails(`✅ AI Analysis Complete: ${data.reasoning_summary || 'Analysis complete'} [Threat: ${severity} ${threatPercent}%]`);
+            // Keep anomaly status active if high severity
+            if (threatLevel > 0.6) {
+              setAnomalyStatus('Anomaly Detected');
+              setCurrentDetails(`🔴 HIGH THREAT DETECTED: ${data.reasoning_summary || 'Severe anomaly confirmed'} [Threat: ${severity} ${threatPercent}%]`);
+            } else {
+              setAnomalyStatus('Normal');
+              setCurrentDetails(`✅ Tier 2 Analysis Complete: ${data.reasoning_summary || 'Analysis complete'} [Threat: ${severity} ${threatPercent}%]`);
+            }
           }
           
           // Update the latest anomaly with tier2 analysis
@@ -309,7 +346,8 @@ function App() {
           
           const anomalyData = data.data;
           setAnomalyStatus('Anomaly Detected');
-          setCurrentDetails(`🚨 ${anomalyData.details || 'New anomaly detected!'} - AI analysis in progress...`);
+          setTier2InProgress(true); // Mark Tier 2 as starting
+          setCurrentDetails(`🚨 ${anomalyData.details || 'New anomaly detected!'} - Starting Tier 2 AI analysis...`);
           
           // Add to anomalies list immediately for real-time display
           setAnomalies(prev => {
@@ -337,12 +375,59 @@ function App() {
           return;
         }
 
-        // Handle regular anomaly detection (Tier 1 - fallback for older format)
+        // Handle regular anomaly detection (Tier 1 - enhanced component display)
         if (data.status === 'Suspected Anomaly') {
-          console.log('🔍 Tier 1 anomaly detected (legacy format):', data);
+          console.log('🔍 Tier 1 anomaly detected:', data);
+          
+          // Extract detailed component information
+          let detailedStatus = data.details || 'Anomaly detected';
+          
+          if (data.tier1_components) {
+            const components = data.tier1_components;
+            console.log('🔬 Processing Tier 1 components:', components);
+            
+            // Build detailed breakdown string
+            const componentBreakdown = [];
+            
+            if (components.pose_analysis) {
+              const pose = components.pose_analysis;
+              if (pose.anomaly_detected) {
+                componentBreakdown.push(`📸 POSE: ${pose.summary || 'Anomaly detected'}`);
+              }
+            }
+            
+            if (components.audio_analysis) {
+              const audio = components.audio_analysis;
+              if (audio.available && audio.transcript_text) {
+                componentBreakdown.push(`🎙️ AUDIO: "${audio.transcript_text}"`);
+              } else if (audio.summary) {
+                componentBreakdown.push(`🎙️ AUDIO: ${audio.summary}`);
+              }
+            }
+            
+            if (components.scene_analysis) {
+              const scene = components.scene_analysis;
+              if (scene.anomaly_probability > 0.1) {
+                componentBreakdown.push(`🎬 SCENE: ${scene.summary || `Anomaly probability: ${scene.anomaly_probability.toFixed(3)}`}`);
+              }
+            }
+            
+            if (components.fusion_logic) {
+              const fusion = components.fusion_logic;
+              if (fusion.details) {
+                componentBreakdown.push(`🧠 FUSION: ${fusion.details}`);
+              }
+            }
+            
+            // Update status with detailed breakdown
+            if (componentBreakdown.length > 0) {
+              detailedStatus = `🚨 TIER 1 DETECTION:\n${componentBreakdown.join('\n')}\n\n🔬 Triggering Tier 2 AI Analysis...`;
+            }
+          }
           
           setAnomalyStatus('Anomaly Detected');
-          setCurrentDetails(`🚨 ${data.details || 'Anomaly detected!'} - Triggering AI analysis...`);
+          setTier2InProgress(true); // Mark Tier 2 as starting
+          setCurrentDetails(detailedStatus);
           
           // Add to anomalies list if it has frame info and doesn't already exist
           if (data.frame_count || data.frame_id) {
@@ -371,8 +456,41 @@ function App() {
             });
           }
         } else if (data.status === 'Normal' || data.status === 'No Anomaly') {
-          setAnomalyStatus('Normal');
-          setCurrentDetails(data.details || 'Monitoring...');
+          // Only update status to Normal if no Tier 2 analysis is in progress
+          if (!tier2InProgress) {
+            setAnomalyStatus('Normal');
+          }
+          
+          // Show detailed real-time analysis information
+          const displayDetails = data.details || 'Monitoring...';
+          
+          // Only update details if no Tier 2 analysis is in progress (to preserve analysis status)
+          if (!tier2InProgress) {
+            // Extract scene and pose confidence from details if available
+            let enhancedDetails = displayDetails;
+            if (data.tier1_components) {
+              const sceneData = data.tier1_components.scene_analysis || {};
+              const poseData = data.tier1_components.pose_analysis || {};
+              
+              const sceneProb = sceneData.scene_probability || 0;
+              const poseDetected = poseData.anomaly_detected || false;
+              
+              enhancedDetails = `Real-time monitoring: Scene confidence ${(sceneProb * 100).toFixed(1)}%, Pose anomaly: ${poseDetected ? 'Yes' : 'No'} | ${displayDetails}`;
+            } else if (data.fusion_status) {
+              enhancedDetails = `Fusion: ${data.fusion_status} | ${displayDetails}`;
+            }
+            
+            setCurrentDetails(enhancedDetails);
+          }
+          
+          // Log the actual data being received for debugging
+          console.log('📊 Real-time normal data:', {
+            status: data.status,
+            details: data.details,
+            fusion_status: data.fusion_status,
+            tier1_components: data.tier1_components,
+            timestamp: data.timestamp
+          });
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
@@ -410,7 +528,7 @@ function App() {
 
     setWs(newWs);
     }, 1000); // Close the setTimeout function with 1 second delay
-  }, [ws, user?.username, inputMode]); // Added inputMode dependency
+  }, [ws, user?.username, inputMode, tier2InProgress, tier2Timeout]); // Added tier2Timeout dependency
 
   // Disconnect WebSocket
   const disconnectWebSocket = useCallback(() => {
@@ -467,6 +585,15 @@ function App() {
     const interval = setInterval(markAnomaliesAsSeen, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Cleanup Tier 2 timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (tier2Timeout) {
+        clearTimeout(tier2Timeout);
+      }
+    };
+  }, [tier2Timeout]);
 
   // Control handlers
   const handleToggleStream = () => setShowVideoStream(!showVideoStream);
@@ -622,6 +749,7 @@ function App() {
         onDisconnect={handleDisconnect}
         onDownloadData={handleDownloadData}
         videoFrame={videoFrame}
+        tier2InProgress={tier2InProgress}
       />
     );
   }
@@ -764,6 +892,7 @@ function App() {
               currentDetails={currentDetails}
               isConnected={isConnected}
               showVideoStream={showVideoStream}
+              tier2InProgress={tier2InProgress}
             />
           </div>
 

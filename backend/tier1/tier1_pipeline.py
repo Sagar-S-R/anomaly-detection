@@ -13,7 +13,7 @@ _anomaly_history = deque(maxlen=3)  # Reduced from 5 to 3 for faster response
 _startup_frame_count = 0  # Track startup frames to prevent initial false positives
 
 def smooth_anomaly_detection(current_status, current_scene_prob, current_pose_anomaly, fusion_details=""):
-    """Enhanced smoothing with AUDIO EMERGENCY BYPASS and startup protection"""
+    """INTELLIGENT smoothing with adaptive thresholds and context awareness"""
     global _startup_frame_count
     _startup_frame_count += 1
     
@@ -22,33 +22,57 @@ def smooth_anomaly_detection(current_status, current_scene_prob, current_pose_an
         print(f"🚨 AUDIO EMERGENCY - BYPASSING ALL SMOOTHING")
         return "Suspected Anomaly"
     
-    # Ignore first 10 frames to prevent startup false positives (unless audio emergency)
-    if _startup_frame_count <= 10 and "AUDIO EMERGENCY" not in fusion_details:
+    # Smart startup protection based on activity level
+    startup_threshold = 10 if current_scene_prob < 0.1 else 15  # Reduced from 15/25
+    if _startup_frame_count <= startup_threshold and "AUDIO EMERGENCY" not in fusion_details:
+        print(f"🛡️ Startup protection: frame {_startup_frame_count}/{startup_threshold}")
         return "Normal"
     
+    # Add current frame to history
     _anomaly_history.append({
         "status": current_status == "Suspected Anomaly",
         "scene_prob": current_scene_prob,
         "pose": current_pose_anomaly,
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "confidence": 0.9 if "High-confidence" in fusion_details else 0.7 if "Multi-modal" in fusion_details else 0.5
     })
     
-    # Count recent anomalies
+    # Analyze recent history
     anomaly_count = sum(1 for h in _anomaly_history if h["status"])
+    avg_confidence = np.mean([h["confidence"] for h in _anomaly_history if h["status"]]) if anomaly_count > 0 else 0
     
-    # Check for high-confidence signals that should bypass smoothing
-    high_confidence_pose = current_pose_anomaly and current_scene_prob > 0.15
-    very_high_scene = current_scene_prob > 0.4
+    # MORE SENSITIVE immediate triggers 
+    very_high_confidence = (
+        ("SMART Fall Detection" in fusion_details and current_scene_prob > 0.15) or  # Reduced from 0.3
+        ("High-confidence pose" in fusion_details and current_scene_prob > 0.1) or   # Reduced from 0.2  
+        ("High-confidence scene" in fusion_details and current_scene_prob > 0.3) or  # Reduced from 0.5
+        ("Rapid arm movement" in fusion_details) or  # Any rapid arm movement
+        ("Head movement" in fusion_details) or       # Any head movement
+        ("Torso change" in fusion_details)           # Any torso change
+    )
     
-    # Immediate trigger for high-confidence anomalies
-    if high_confidence_pose or very_high_scene:
-        print(f"🚨 High-confidence anomaly detected - bypassing smoothing")
+    if very_high_confidence:
+        print(f"🚨 High-confidence immediate trigger: {fusion_details[:80]}...")
         return "Suspected Anomaly"
     
-    # Normal smoothing: require majority agreement
-    if anomaly_count >= 2:  # 2 out of 3 frames
+    # MORE LENIENT smoothing requirements
+    if avg_confidence > 0.7:  # High average confidence - reduced from 0.8
+        required_agreement = 1  # Need only 1 frame! - reduced from 2
+    elif avg_confidence > 0.5:  # Medium confidence - reduced from 0.6
+        required_agreement = 2  # Need 2 out of 3 frames - reduced from 3
+    else:  # Low confidence
+        required_agreement = 2  # Need 2 out of 3 frames - reduced from 3
+        # Simplified validation
+        if anomaly_count >= required_agreement:
+            print(f"🟡 Low confidence but sufficient agreement: {anomaly_count}/{len(_anomaly_history)}")
+    
+    # Decision based on adaptive requirements
+    if anomaly_count >= required_agreement:
+        print(f"🚨 SENSITIVE anomaly confirmed: {anomaly_count}/{len(_anomaly_history)} frames, avg_conf={avg_confidence:.2f}, req={required_agreement}")
         return "Suspected Anomaly"
     else:
+        if anomaly_count > 0:  # Some anomalies detected but not enough
+            print(f"🟡 Partial anomaly: {anomaly_count}/{len(_anomaly_history)} frames (need {required_agreement}), avg_conf={avg_confidence:.2f}")
         return "Normal"
 
 def run_tier1_continuous(frame, audio_chunk_path):

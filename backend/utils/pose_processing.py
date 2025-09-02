@@ -21,9 +21,9 @@ _streaming_timestamp = 0
 _previous_landmarks = None
 _previous_arm_positions = None
 _last_anomaly_time = 0  # Cooldown mechanism
-_anomaly_cooldown_ms = 1000  # Original working cooldown
+_anomaly_cooldown_ms = 2000  # Conservative 2 second cooldown (increased from 1000ms)
 _anomaly_counter = 0  # Counter for persistent anomaly detection
-_required_anomaly_frames = 3  # Require anomaly to persist for 3 frames
+_required_anomaly_frames = 5  # Require anomaly to persist for 5 frames (increased from 3)
 
 def detect_aggressive_movements(landmarks, previous_landmarks=None):
     """Detect movements including aggressive actions, falls, and significant postural changes like bending"""
@@ -78,24 +78,63 @@ def detect_aggressive_movements(landmarks, previous_landmarks=None):
                                (prev_arms['left_shoulder'][1] - prev_arms['left_hip'][1])**2)
     torso_length_change = abs(current_torso_length - prev_torso_length)
     
-    # BALANCED THRESHOLDS - Sensitive but not too sensitive for startup
-    # Check for rapid arm movements (potential punching) - BALANCED THRESHOLD
-    wrist_speed_threshold = 0.22  # BALANCED - between 0.15 and 0.30
+    # INTELLIGENT THRESHOLDS - More sensitive but smart
+    # Calculate movement context for better accuracy
+    overall_movement = np.sqrt(left_wrist_speed**2 + right_wrist_speed**2 + head_movement**2)
+    
+    # More sensitive adaptive thresholds 
+    if overall_movement < 0.05:  # Very still person - lower threshold needed
+        wrist_speed_threshold = 0.25  # Much more sensitive for still people
+        head_threshold = 0.20
+        torso_threshold = 0.12
+    elif overall_movement > 0.2:  # Active person - but still detect anomalies
+        wrist_speed_threshold = 0.18  # More sensitive for active people
+        head_threshold = 0.15
+        torso_threshold = 0.08
+    else:  # Normal activity level
+        wrist_speed_threshold = 0.22  # More sensitive than before
+        head_threshold = 0.18
+        torso_threshold = 0.10
+    
+    # ENHANCED: Rapid arm movement detection with smart validation
     if left_wrist_speed > wrist_speed_threshold or right_wrist_speed > wrist_speed_threshold:
-        print(f"🚨 Pose Anomaly: Rapid arm movement (L:{left_wrist_speed:.3f}, R:{right_wrist_speed:.3f} > {wrist_speed_threshold})")
-        return True
+        # Smart validation: check if movement pattern suggests anomaly
+        wrist_height_left = current_arms['left_wrist'][1]
+        wrist_height_right = current_arms['right_wrist'][1]
+        shoulder_avg_height = (current_arms['left_shoulder'][1] + current_arms['right_shoulder'][1]) / 2
+        
+        # More lenient gesture zone detection
+        normal_gesture_zone = (wrist_height_left < shoulder_avg_height + 0.15 and 
+                              wrist_height_right < shoulder_avg_height + 0.15 and
+                              max(left_wrist_speed, right_wrist_speed) < 0.35)  # Added speed check
+        
+        # Trigger if NOT clearly normal gesturing OR if speed is very high
+        if not normal_gesture_zone or max(left_wrist_speed, right_wrist_speed) > 0.3:
+            print(f"🚨 Pose Anomaly: Rapid arm movement (L:{left_wrist_speed:.3f}, R:{right_wrist_speed:.3f} > {wrist_speed_threshold}, normal_gesture:{normal_gesture_zone})")
+            return True
     
-    # Check for significant head movement (bending, falling) - BALANCED THRESHOLD
-    head_threshold = 0.15  # BALANCED - between 0.10 and 0.20
+    # ENHANCED: Head movement with better sensitivity
     if head_movement > head_threshold:
-        print(f"🚨 Pose Anomaly: Significant head movement ({head_movement:.3f} > {head_threshold})")
-        return True
+        # Check movement direction - any significant movement is concerning
+        head_vertical_change = current_arms['nose'][1] - prev_arms['nose'][1]
+        sudden_downward = head_vertical_change > 0.10  # More sensitive
+        sudden_movement = head_movement > head_threshold * 1.2  # Lower multiplier
+        
+        if sudden_downward or sudden_movement:
+            print(f"🚨 Pose Anomaly: Head movement ({head_movement:.3f} > {head_threshold}, downward:{sudden_downward}, sudden:{sudden_movement})")
+            return True
     
-    # Check for torso bending (significant change in shoulder-hip distance) - BALANCED THRESHOLD
-    torso_threshold = 0.08  # BALANCED - between 0.06 and 0.12
+    # ENHANCED: Torso analysis with better detection
     if torso_length_change > torso_threshold:
-        print(f"🚨 Pose Anomaly: Torso bending/postural change ({torso_length_change:.3f} > {torso_threshold})")
-        return True
+        # More lenient stability check
+        hip_distance = np.sqrt((current_arms['left_hip'][0] - current_arms['right_hip'][0])**2 + 
+                              (current_arms['left_hip'][1] - current_arms['right_hip'][1])**2)
+        stable_base = hip_distance > 0.08  # More lenient
+        significant_change = torso_length_change > torso_threshold * 1.3
+        
+        if not stable_base or significant_change:
+            print(f"🚨 Pose Anomaly: Torso change ({torso_length_change:.3f} > {torso_threshold}, stable:{stable_base}, significant:{significant_change})")
+            return True
     
     # Check for extended arm positions (potential aggressive gestures) - improved logic
     arm_extension_threshold = 0.35  # Increased from 0.2 - less sensitive
@@ -195,28 +234,65 @@ def process_pose_frame(frame):
         height = max_y - min_y
         ratio = height / width
         
-        # Enhanced fall detection - multiple validation methods
-        fall_threshold = 0.35  # Less restrictive than 0.25 to catch real falls
+        # INTELLIGENT fall detection - multiple validation methods with smart thresholds
+        base_fall_threshold = 0.4  # More lenient base threshold
         fall_detected = False
         
-        if ratio < fall_threshold:
-            # Method 1: Traditional horizontal check
+        if ratio < base_fall_threshold:
+            # Method 1: Body orientation analysis
             shoulder_y = (landmarks[11].y + landmarks[12].y) / 2
             hip_y = (landmarks[23].y + landmarks[24].y) / 2
-            horizontal_alignment = abs(shoulder_y - hip_y) < 0.08  # Slightly more lenient
             
-            # Method 2: Check if person is low to ground (Y position of key points)
+            # Method 2: Ground proximity with context
             avg_torso_y = (shoulder_y + hip_y) / 2
-            ground_proximity = avg_torso_y > 0.6  # Lower half of frame
+            ground_proximity = avg_torso_y > 0.55  # Person in lower part of frame
             
-            # Method 3: Check head position relative to body
+            # Method 3: Head-body relationship
             head_y = landmarks[0].y  # Nose position
-            head_below_shoulders = head_y > shoulder_y + 0.05
+            head_below_shoulders = head_y > shoulder_y
             
-            # Fall detected if ANY of these conditions are met (not ALL)
-            if horizontal_alignment or (ground_proximity and head_below_shoulders):
-                print(f"🚨 Pose Anomaly: Fall detected (ratio:{ratio:.3f}, horizontal:{horizontal_alignment}, ground:{ground_proximity}, head_low:{head_below_shoulders})")
+            # Method 4: Limb positioning (arms/legs spread indicating fall)
+            left_wrist_low = landmarks[15].y > shoulder_y + 0.2
+            right_wrist_low = landmarks[16].y > shoulder_y + 0.2
+            limbs_extended = left_wrist_low or right_wrist_low
+            
+            # Method 5: Overall body compactness (fallen person is more horizontal)
+            body_spread_x = abs(landmarks[15].x - landmarks[16].x)  # Wrist separation
+            wide_body_spread = body_spread_x > 0.3
+            
+            # SMART FALL DETECTION: Use multiple criteria with scoring
+            fall_score = 0
+            
+            # Ratio score (most important)
+            if ratio < 0.25:
+                fall_score += 3  # Very horizontal
+            elif ratio < 0.35:
+                fall_score += 2  # Quite horizontal
+            else:
+                fall_score += 1  # Somewhat horizontal
+            
+            # Position score
+            if ground_proximity:
+                fall_score += 2
+            
+            # Head position score
+            if head_below_shoulders:
+                fall_score += 1
+            
+            # Limb positioning score
+            if limbs_extended:
+                fall_score += 1
+                
+            # Body spread score
+            if wide_body_spread:
+                fall_score += 1
+            
+            # Decision: Need at least 4 points to confirm fall
+            if fall_score >= 4:
+                print(f"🚨 SMART Fall Detection: ratio={ratio:.3f}, score={fall_score}/8, ground={ground_proximity}, head_low={head_below_shoulders}, limbs={limbs_extended}")
                 fall_detected = True
+            else:
+                print(f"🟡 Possible fall position: ratio={ratio:.3f}, score={fall_score}/8 (need 4+)")
             
         if fall_detected:
             frame_anomaly_detected = True
@@ -235,18 +311,18 @@ def process_pose_frame(frame):
     else:
         _anomaly_counter = max(0, _anomaly_counter - 1)  # Decay counter
     
-    # Adaptive confirmation based on anomaly strength
-    # For falls: require only 2 frames (faster response)
-    # For other anomalies: require 3 frames (more filtering)
-    if fall_detected and _anomaly_counter >= 2:
+    # Conservative temporal smoothing: require more frames for ALL anomaly types
+    # For falls: require 4 frames (was 2) - more conservative
+    # For other anomalies: require 5 frames (was 3) - more conservative
+    if fall_detected and _anomaly_counter >= 4:  # CONSERVATIVE - increased from 2
         _last_anomaly_time = _streaming_timestamp
         _anomaly_counter = 0
-        print("🚨 Pose: CONFIRMED FALL ANOMALY (fast track)")
+        print("🚨 Pose: CONFIRMED FALL ANOMALY (conservative filtering)")
         return 1
     elif not fall_detected and _anomaly_counter >= _required_anomaly_frames:
         _last_anomaly_time = _streaming_timestamp
         _anomaly_counter = 0
-        print("🚨 Pose: CONFIRMED ANOMALY after temporal filtering")
+        print("🚨 Pose: CONFIRMED ANOMALY after conservative temporal filtering")
         return 1
     
     return 0  # No confirmed anomaly

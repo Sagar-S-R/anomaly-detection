@@ -923,6 +923,8 @@ async def get_system_stats():
 
 @app.websocket("/stream_video")
 async def stream_video(websocket: WebSocket):
+    global camera_in_use  # Move global declaration to the top
+    
     await websocket.accept()
     
     # Create a unique session
@@ -956,58 +958,87 @@ async def stream_video(websocket: WebSocket):
     active_websocket_connections[current_username] = websocket
     print(f"📡 Registered WebSocket for real-time anomaly updates: {current_username}")
     
-    # Try multiple times to open camera
+    # Try multiple times to open camera with different approaches
     video_cap = None
     cv2.setLogLevel(0)
     
-    # Check if camera is already in use by another WebSocket
-    if camera_in_use:
-        await websocket.send_json({"error": "Camera already in use by another session. Please wait and try again."})
-        return
+    # Reset camera state first
+    global camera_in_use
+    camera_in_use = False  # Reset camera state
+    if hasattr(app.state, 'active_cameras'):
+        app.state.active_cameras.clear()
     
-    active_cameras = getattr(app.state, 'active_cameras', set())
-    if 0 in active_cameras:
-        await websocket.send_json({"error": "Camera already in use by another session. Please wait and try again."})
-        return
+    print(f"🎬 Attempting to open camera for session {session_id}")
     
-    for attempt in range(5):  # Increased attempts
-        try:
-            video_cap = cv2.VideoCapture(0)
-            video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)   # Lower resolution for better performance
-            video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            video_cap.set(cv2.CAP_PROP_FPS, 30)
-            
-            if video_cap.isOpened():
-                ret, test_frame = video_cap.read()
-                if ret and test_frame is not None:
-                    print(f"✅ Camera opened successfully on attempt {attempt + 1}")
-                    # Mark camera as active
-                    camera_in_use = True
-                    if not hasattr(app.state, 'active_cameras'):
-                        app.state.active_cameras = set()
-                    app.state.active_cameras.add(0)
-                    break
-                else:
+    # Try different camera indices and methods
+    camera_indices_to_try = [0, 1, -1]  # Try default, backup, and auto-detect
+    
+    for camera_idx in camera_indices_to_try:
+        print(f"🎬 Trying camera index {camera_idx}")
+        
+        for attempt in range(3):  # 3 attempts per camera index
+            try:
+                # Release any existing capture first
+                if video_cap:
                     video_cap.release()
+                    time.sleep(0.5)
+                
+                # Try different capture backends
+                if attempt == 0:
+                    video_cap = cv2.VideoCapture(camera_idx)  # Default backend
+                elif attempt == 1:
+                    video_cap = cv2.VideoCapture(camera_idx, cv2.CAP_DSHOW)  # DirectShow on Windows
+                else:
+                    video_cap = cv2.VideoCapture(camera_idx, cv2.CAP_V4L2)  # V4L2 fallback
+                
+                if video_cap is None:
+                    continue
+                
+                # Configure camera
+                video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                video_cap.set(cv2.CAP_PROP_FPS, 30)
+                
+                # Test if camera actually works
+                if video_cap.isOpened():
+                    ret, test_frame = video_cap.read()
+                    if ret and test_frame is not None and test_frame.size > 0:
+                        print(f"✅ Camera {camera_idx} opened successfully on attempt {attempt + 1}")
+                        camera_in_use = True
+                        if not hasattr(app.state, 'active_cameras'):
+                            app.state.active_cameras = set()
+                        app.state.active_cameras.add(camera_idx)
+                        break  # Success!
+                    else:
+                        print(f"⚠️ Camera {camera_idx} opened but failed to read frame")
+                        video_cap.release()
+                        video_cap = None
+                else:
+                    print(f"⚠️ Camera {camera_idx} failed to open")
+                    if video_cap:
+                        video_cap.release()
                     video_cap = None
-            else:
+                    
+            except Exception as e:
+                print(f"❌ Camera {camera_idx} attempt {attempt + 1} failed: {e}")
                 if video_cap:
                     video_cap.release()
                 video_cap = None
-        except Exception as e:
-            print(f"❌ Camera attempt {attempt + 1} failed: {e}")
-            if video_cap:
-                video_cap.release()
-            video_cap = None
+            
+            if video_cap and video_cap.isOpened():
+                break  # Success, exit attempt loop
+            
+            if attempt < 2:
+                await asyncio.sleep(1)  # Wait between attempts
         
-        if attempt < 4:
-            await asyncio.sleep(2)  # Longer wait between attempts
+        if video_cap and video_cap.isOpened():
+            break  # Success, exit camera index loop
     
     if video_cap is None or not video_cap.isOpened():
-        error_msg = "Camera unavailable. Please ensure:\n1. Camera is not in use by another application\n2. Camera drivers are installed\n3. Camera permissions are granted"
+        error_msg = "Camera unavailable. Please ensure:\n1. Close any other camera applications (Teams, Zoom, etc.)\n2. Check camera permissions in Windows settings\n3. Try refreshing the page\n4. Restart the backend server if needed"
         await websocket.send_json({"error": error_msg})
-        print("❌ Camera failed to open after all attempts")
+        print("❌ Camera failed to open after trying all options")
         return
 
     # Get video properties
@@ -1108,6 +1139,9 @@ async def stream_video(websocket: WebSocket):
             try:
                 tier1_result = run_tier1_continuous(frame, audio_chunk_path)
                 
+                # 🔍 DETAILED TIER 1 LOGGING
+                print(f"🔍 Tier1 Result: {json.dumps(tier1_result, indent=2)}")
+                
                 status = tier1_result["status"]
                 details = tier1_result["details"]
                 
@@ -1134,6 +1168,17 @@ async def stream_video(websocket: WebSocket):
                         last_anomaly_time = timestamp
                         performance_stats["tier1_anomalies_detected"] += 1
                         print(f"\n🚨 NEW ANOMALY INCIDENT #{performance_stats['tier1_anomalies_detected']}")
+                        print(f"🚨 ANOMALY DETECTED: {details}")
+                        
+                        # 🔍 DETAILED ANOMALY BREAKDOWN
+                        if "tier1_components" in tier1_result:
+                            components = tier1_result["tier1_components"]
+                            print(f"🔬 TIER 1 COMPONENT ANALYSIS:")
+                            print(f"  📸 POSE: {components.get('pose_analysis', {}).get('summary', 'N/A')}")
+                            print(f"  🎙️  AUDIO: {components.get('audio_analysis', {}).get('summary', 'N/A')}")
+                            print(f"  🎬 SCENE: {components.get('scene_analysis', {}).get('summary', 'N/A')}")
+                            print(f"  🧠 FUSION: {components.get('fusion_logic', {}).get('details', 'N/A')}")
+                        print(f"🚨 TRIGGERING TIER 2 ANALYSIS FOR FRAME {frame_id}...")
                         print(f"📍 Details: {details}")
                         print(f"🔀 Fusion: {fusion_status} | Frame: {frame_id} | Time: {timestamp:.2f}s")
                         
@@ -1168,6 +1213,23 @@ async def stream_video(websocket: WebSocket):
                         # TRIGGER TIER 2 ANALYSIS (synchronous but optimized)
                         performance_stats["tier2_analyses_triggered"] += 1
                         print(f"🔬 TRIGGERING TIER 2 ANALYSIS #{performance_stats['tier2_analyses_triggered']}...")
+                        print(f"🔬 Tier 2 Analysis Starting for Frame {frame_id} at {timestamp}")
+                        
+                        # Send immediate Tier 2 start notification to frontend
+                        tier2_start_notification = {
+                            "type": "tier2_start",
+                            "frame_id": frame_id,
+                            "timestamp": timestamp,
+                            "message": "Starting advanced AI analysis...",
+                            "status": "analyzing"
+                        }
+                        
+                        try:
+                            if websocket.client_state.name == "CONNECTED":
+                                await websocket.send_json(tier2_start_notification)
+                                print(f"📤 Tier 2 START notification sent to frontend")
+                        except Exception as send_error:
+                            print(f"❌ Tier 2 START notification error: {send_error}")
                         
                         try:
                             tier2_result = run_tier2_continuous(frame.copy(), audio_chunk_path, tier1_result.copy())
@@ -1177,8 +1239,10 @@ async def stream_video(websocket: WebSocket):
                             anomaly_event["tier2_analysis"] = tier2_result
                             tier1_result["tier2_analysis"] = tier2_result
                             
-                            print(f"✅ TIER 2 ANALYSIS COMPLETE")
+                            print(f"✅ TIER 2 ANALYSIS COMPLETE FOR FRAME {frame_id}")
                             print(f"📋 Summary: {tier2_result.get('reasoning_summary', 'Analysis complete')}")
+                            print(f"🎯 Threat Level: {tier2_result.get('threat_severity_index', 0.5):.2f}")
+                            print(f"🔍 Tier 2 Full Result: {json.dumps(tier2_result, indent=2)}")
                             
                             # Send separate Tier 2 WebSocket message
                             tier2_websocket_result = {
@@ -1192,7 +1256,7 @@ async def stream_video(websocket: WebSocket):
                             try:
                                 if websocket.client_state.name == "CONNECTED":
                                     await websocket.send_json(tier2_websocket_result)
-                                    print(f"📤 Tier 2 results sent to frontend")
+                                    print(f"📤 Tier 2 results sent to frontend for frame {frame_id}")
                             except Exception as send_error:
                                 print(f"❌ Tier 2 WebSocket error: {send_error}")
                                 
@@ -1242,6 +1306,9 @@ async def stream_video(websocket: WebSocket):
                 try:
                     if websocket.client_state.name == "CONNECTED":
                         await websocket.send_json(tier1_result)
+                        # Only log when anomaly detected to avoid spam
+                        if tier1_result.get("status") == "Suspected Anomaly":
+                            print(f"📤 Tier 1 ANOMALY data sent to frontend: {tier1_result.get('status')} - {tier1_result.get('details', '')}")
                     else:
                         print("WebSocket not connected, stopping")
                         break
@@ -1305,12 +1372,12 @@ async def stream_video(websocket: WebSocket):
                 audio_stream.stop()
                 print("🔊 Audio stream stopped")
             
-            # Remove camera from active list and reset global flag
-            if hasattr(app.state, 'active_cameras') and 0 in app.state.active_cameras:
-                app.state.active_cameras.remove(0)
-                print("📷 Camera removed from active list")
+            # Remove camera from active list and reset global flag  
+            if hasattr(app.state, 'active_cameras'):
+                app.state.active_cameras.clear()
+                print("📷 All cameras removed from active list")
             
-            # Reset global camera flag
+            # Reset camera flag
             camera_in_use = False
             print("🔓 Camera lock released")
             

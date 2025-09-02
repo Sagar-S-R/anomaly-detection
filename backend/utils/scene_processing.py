@@ -107,33 +107,66 @@ def process_scene_tier2(video_path):
 
 # Existing code...
 def process_scene_frame(image_array):
-    """Process single frame for scene anomaly detection with consistent thresholds"""
+    """INTELLIGENT scene analysis with confidence scoring and context awareness"""
     image = Image.fromarray(image_array)
-    # Comprehensive text prompts including aggressive behaviors
-    texts = [
-        "person sitting normally in chair or standing upright",
-        "person working at desk or normal daily activity", 
-        "person walking or moving normally",
-        "person fallen on floor unconscious or injured",
-        "person crawling on ground in distress",
-        "person punching or fighting aggressively",
-        "person making threatening gestures or violent movements"
+    
+    # Enhanced text prompts with more specific descriptions
+    normal_prompts = [
+        "person sitting calmly in chair reading or working",
+        "person standing upright with normal posture", 
+        "person walking normally with steady gait",
+        "person gesturing normally while talking",
+        "person doing routine daily activities peacefully"
     ]
-    inputs = clip_processor(text=texts, images=image, return_tensors="pt", padding=True)
+    
+    anomaly_prompts = [
+        "person collapsed on floor unconscious or seriously injured",
+        "person lying on ground unable to get up or in distress",
+        "person making aggressive punching or striking motions",
+        "person in threatening fighting stance with raised fists",
+        "person falling down or losing balance dramatically"
+    ]
+    
+    all_prompts = normal_prompts + anomaly_prompts
+    
+    inputs = clip_processor(text=all_prompts, images=image, return_tensors="pt", padding=True)
     outputs = clip_model(**inputs)
     logits_per_image = outputs.logits_per_image
     probs = logits_per_image.softmax(dim=1)[0]
     
-    # Normal activities: indices 0, 1, 2
-    # Anomaly activities: indices 3, 4, 5, 6
-    normal_prob = max(probs[0], probs[1], probs[2])  # Max of normal activities
-    anomaly_prob = max(probs[3], probs[4], probs[5], probs[6])  # Max of anomaly activities
+    # Calculate scores for normal vs anomaly categories
+    normal_scores = probs[:len(normal_prompts)]
+    anomaly_scores = probs[len(normal_prompts):]
     
-    # Use consistent threshold with other functions - less sensitive
-    result = anomaly_prob.item() if anomaly_prob > normal_prob * 1.3 else 0.0  # Consistent with tier1/tier2
+    # Get best matches in each category
+    best_normal_score = torch.max(normal_scores).item()
+    best_anomaly_score = torch.max(anomaly_scores).item()
+    best_normal_idx = torch.argmax(normal_scores).item()
+    best_anomaly_idx = torch.argmax(anomaly_scores).item()
     
-    # Structured debug logging
-    print(f"🎬 Scene Analysis: normal={normal_prob:.3f}, anomaly={anomaly_prob:.3f}, threshold=1.3x, result={result:.3f}")
+    # MUCH MORE SENSITIVE threshold calculation
+    confidence_gap = abs(best_anomaly_score - best_normal_score)
+    base_threshold = 1.2  # Much more sensitive base multiplier (was 1.5)
+    
+    # More sensitive threshold adjustment
+    if confidence_gap > 0.2:  # High confidence difference - reduced from 0.3
+        threshold_multiplier = base_threshold  # Use base threshold
+    elif confidence_gap > 0.1:  # Medium confidence - reduced from 0.15
+        threshold_multiplier = base_threshold + 0.2  # Slightly higher - reduced from 0.3
+    else:  # Low confidence difference
+        threshold_multiplier = base_threshold + 0.3  # Much lower than before - reduced from 0.7
+    
+    # Calculate final result with much more sensitive thresholding
+    if best_anomaly_score > best_normal_score * threshold_multiplier:
+        result = best_anomaly_score
+        anomaly_type = anomaly_prompts[best_anomaly_idx]
+        print(f"🎬 SENSITIVE Scene Detection: anomaly={best_anomaly_score:.3f} > normal={best_normal_score:.3f} * {threshold_multiplier:.1f}, type='{anomaly_type}', gap={confidence_gap:.3f}")
+    else:
+        result = 0.0
+        normal_type = normal_prompts[best_normal_idx]
+        # Log more cases to see what's happening
+        if best_anomaly_score > 0.15:  # Reduced from 0.2
+            print(f"🎬 Scene Normal: anomaly={best_anomaly_score:.3f} <= normal={best_normal_score:.3f} * {threshold_multiplier:.1f}, type='{normal_type}'")
     
     return result
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream, videoFrame, ws }) => {
+const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream, videoFrame, ws, tier2InProgress }) => {
   const [videoError, setVideoError] = useState(false);
   const [videoKey, setVideoKey] = useState(Date.now());
   const [useWebSocketStream, setUseWebSocketStream] = useState(false);
@@ -81,7 +81,7 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream,
         </div>
       </div>
 
-      {/* Status Display */}
+      {/* Enhanced Status Display with Tier 2 Progress */}
       <div className={`
         p-6 rounded-xl mb-8 border-l-4 bg-gradient-to-r transition-all duration-500
         ${config.borderColor} ${config.bgColor}
@@ -102,12 +102,20 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream,
             )}
           </div>
           <div className="flex-1">
-            <p className={`font-bold text-xl ${config.textColor} mb-1 font-mono tracking-wide`}>
-              {anomalyStatus}
-            </p>
-            <p className={`text-sm ${config.textColor} opacity-80 leading-relaxed font-mono`}>
+            <div className="flex items-center gap-4 mb-2">
+              <p className={`font-bold text-xl ${config.textColor} font-mono tracking-wide`}>
+                {anomalyStatus}
+              </p>
+              {tier2InProgress && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-400/40 rounded-lg">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span className="text-blue-400 text-sm font-mono font-semibold">TIER 2 AI ANALYSIS</span>
+                </div>
+              )}
+            </div>
+            <div className={`text-sm ${config.textColor} opacity-80 leading-relaxed font-mono whitespace-pre-line`}>
               {currentDetails}
-            </p>
+            </div>
           </div>
         </div>
       </div>

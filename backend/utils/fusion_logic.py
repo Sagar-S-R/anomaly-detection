@@ -18,7 +18,7 @@ except Exception as e:
 
 
 def tier1_fusion(pose_summary, audio_summary, scene_summary):
-    """Enhanced Tier 1 fusion with AUDIO detection for help calls"""
+    """ENHANCED Tier 1 fusion with INTELLIGENT decision making and context awareness"""
     # Extract scene anomaly probability for threshold check
     scene_prob = 0.0
     if "Scene anomaly probability:" in scene_summary:
@@ -28,183 +28,245 @@ def tier1_fusion(pose_summary, audio_summary, scene_summary):
         except:
             scene_prob = 0.0
     
-    # Parse pose anomaly status
+    # Parse pose anomaly status with context
     pose_anomaly_detected = "True" in pose_summary or "anomaly detected: True" in pose_summary
+    pose_confidence = 0.5  # Default
     
-    # CHECK AUDIO FOR EMERGENCY KEYWORDS - THIS WAS MISSING!
+    # Extract pose confidence from summary if available
+    if "SMART Fall Detection" in pose_summary:
+        pose_confidence = 0.9  # High confidence for smart fall detection
+    elif "Rapid arm movement" in pose_summary:
+        pose_confidence = 0.7  # Medium-high for arm movement
+    elif "head movement" in pose_summary or "Torso instability" in pose_summary:
+        pose_confidence = 0.6  # Medium for other movements
+    
+    # ENHANCED AUDIO ANALYSIS
     audio_emergency_detected = False
+    audio_confidence = 0.0
     if audio_summary and isinstance(audio_summary, str):
         audio_lower = audio_summary.lower()
-        emergency_words = ["help", "emergency", "call", "911", "stop", "hurt", "pain", "can't breathe", "help me"]
-        audio_emergency_detected = any(word in audio_lower for word in emergency_words)
         
-        # Also check for repeated help calls
+        # Critical emergency words (highest priority)
+        # MUCH MORE SENSITIVE critical word lists
+        critical_words = ["help me", "emergency", "call 911", "can't breathe", "heart attack", "fire", "police", "ambulance"]
+        high_priority_words = ["help", "stop", "hurt", "pain", "911", "no", "ow", "ouch", "what", "why"]
+        medium_words = ["call", "please", "scared", "wait", "ah", "oh", "excuse", "hey"]
+        
+        # MUCH MORE SENSITIVE audio confidence calculation
+        if any(word in audio_lower for word in critical_words):
+            audio_emergency_detected = True
+            audio_confidence = 0.95
+        elif any(word in audio_lower for word in high_priority_words):
+            audio_emergency_detected = True
+            audio_confidence = 0.8
+        elif any(word in audio_lower for word in medium_words) and len(audio_summary) > 15:  # Reduced from 30
+            audio_emergency_detected = True
+            audio_confidence = 0.55  # Reduced from 0.6
+        elif len(audio_summary) > 25:  # New: Any long speech might be distress
+            audio_emergency_detected = True
+            audio_confidence = 0.4
+            
+        # ENHANCED repeated word detection - more sensitive
         if "help" in audio_lower and audio_lower.count("help") >= 2:
             audio_emergency_detected = True
+            audio_confidence = max(audio_confidence, 0.9)
+        elif any(word in audio_lower for word in ["no", "stop", "wait"]) and len(audio_summary) > 10:  # New detection
+            audio_emergency_detected = True
+            audio_confidence = max(audio_confidence, 0.65)
+        elif any(char in audio_summary for char in '!?') and len(audio_summary) > 8:  # Punctuation intensity
+            audio_emergency_detected = True
+            audio_confidence = max(audio_confidence, 0.5)
             
         if audio_emergency_detected:
-            print(f"🚨🚨🚨 AUDIO EMERGENCY DETECTED: '{audio_summary}' 🚨🚨🚨")
-        else:
-            # Only log if there's actual audio content
-            if audio_summary and len(audio_summary) > 20 and "no transcripts found" not in audio_lower:
-                pass  # Removed debug spam
+            print(f"🚨🚨🚨 AUDIO EMERGENCY (confidence={audio_confidence:.2f}): '{audio_summary}' 🚨🚨🚨")
     
     # IMMEDIATE ANOMALY if audio emergency is detected
     if audio_emergency_detected:
         result = "Suspected Anomaly"
-        details = f"AUDIO EMERGENCY: '{audio_summary}' - Pose={pose_anomaly_detected}, Scene={scene_prob:.3f}"
+        details = f"AUDIO EMERGENCY (conf={audio_confidence:.2f}): '{audio_summary}' - Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}"
         print(f"🚨🚨🚨 Tier 1 AUDIO EMERGENCY RESULT: {result} 🚨🚨🚨")
         return result, details
     
-    # BALANCED thresholds - not too sensitive for startup
-    if pose_anomaly_detected:
-        scene_threshold = 0.15  # BALANCED from 0.10 - less startup false positives
-    else:
-        scene_threshold = 0.20  # BALANCED from 0.15 - less startup false positives
+    # MUCH MORE SENSITIVE thresholds based on multi-modal confidence
+    confidence_boost = 0
     
-    moderate_scene_anomaly = scene_prob > scene_threshold
+    # Boost confidence if multiple indicators align
+    if pose_anomaly_detected and scene_prob > 0.05:  # Reduced from 0.1
+        confidence_boost += 0.1  # Reduced boost to be more balanced
     
-    # Enhanced decision logic with better edge case handling
-    if pose_anomaly_detected and moderate_scene_anomaly:
-        # Both systems agree - highest confidence
+    # Much more sensitive adaptive thresholds based on pose confidence
+    if pose_confidence > 0.7:  # Reduced from 0.8
+        scene_threshold = 0.02  # EXTREMELY low - reduced from 0.05
+    elif pose_confidence > 0.5:  # Reduced from 0.6
+        scene_threshold = 0.05  # Very low - reduced from 0.10
+    else:  # Low confidence pose
+        scene_threshold = 0.15  # Lower - reduced from 0.20
+    
+    # Apply confidence boost
+    effective_scene_prob = scene_prob + confidence_boost
+    
+    # MUCH MORE SENSITIVE DECISION LOGIC
+    if pose_anomaly_detected and effective_scene_prob > scene_threshold:
+        # Strong multi-modal agreement
         result = "Suspected Anomaly"
-        details = f"Multi-modal anomaly: Pose={pose_anomaly_detected}, Scene={scene_prob:.3f} (threshold={scene_threshold})"
-        print(f"🚨 Tier 1 STRONG ANOMALY: pose={pose_anomaly_detected}, scene={scene_prob:.3f}")
-    elif pose_anomaly_detected and scene_prob > 0.05:
-        # Pose anomaly with minimal scene support - still valid for falls/medical emergencies
+        details = f"Multi-modal anomaly: Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}+{confidence_boost:.2f}={effective_scene_prob:.3f} > {scene_threshold:.2f}"
+        print(f"🚨 Tier 1 STRONG ANOMALY: {details}")
+        
+    elif pose_anomaly_detected and pose_confidence > 0.6 and scene_prob > 0.02:  # Much more sensitive
+        # Medium-confidence pose with minimal scene support
         result = "Suspected Anomaly"
-        details = f"Pose-driven anomaly: Pose={pose_anomaly_detected}, Scene={scene_prob:.3f} (minimal support)"
-        print(f"🚨 Tier 1 POSE ANOMALY: pose={pose_anomaly_detected}, scene={scene_prob:.3f}")
-    elif pose_anomaly_detected and scene_prob <= 0.05:
-        # Strong pose signal with very low scene confidence - could be lighting/camera issue
-        # Still trigger but mark as uncertain
+        details = f"Medium-confidence pose: Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f} (minimal support)"
+        print(f"🚨 Tier 1 POSE ANOMALY (medium conf): {details}")
+        
+    elif pose_anomaly_detected and pose_confidence > 0.8:  # High confidence pose alone
         result = "Suspected Anomaly"
-        details = f"Pose-only anomaly: Pose={pose_anomaly_detected}, Scene={scene_prob:.3f} (low scene confidence - possible lighting issue)"
-        print(f"🚨 Tier 1 POSE-ONLY ANOMALY: pose={pose_anomaly_detected}, scene={scene_prob:.3f}")
-    elif not pose_anomaly_detected and scene_prob > 0.30:
-        # Very high scene probability without pose
+        details = f"High-confidence pose alone: Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}"
+        print(f"🚨 Tier 1 POSE ANOMALY (high conf alone): {details}")
+        
+    elif not pose_anomaly_detected and scene_prob > 0.4:  # Reduced from 0.6
+        # High scene confidence without pose
         result = "Suspected Anomaly"
-        details = f"Scene-driven anomaly: Scene={scene_prob:.3f} (high confidence), Pose={pose_anomaly_detected}"
-        print(f"🚨 Tier 1 SCENE ANOMALY: scene={scene_prob:.3f}, pose={pose_anomaly_detected}")
+        details = f"High-confidence scene: Scene={scene_prob:.3f} (high), Pose={pose_anomaly_detected}"
+        print(f"🚨 Tier 1 SCENE ANOMALY (high conf): {details}")
+        
+    elif pose_anomaly_detected and scene_prob > 0.05:  # Much more sensitive
+        # Any pose with any scene support
+        combined_confidence = (pose_confidence + scene_prob) / 2
+        if combined_confidence > 0.25:  # Much lower threshold - reduced from 0.45
+            result = "Suspected Anomaly"
+            details = f"Combined confidence: Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, Combined={combined_confidence:.2f}"
+            print(f"🚨 Tier 1 COMBINED ANOMALY: {details}")
+        else:
+            result = "Normal"
+            details = f"Low combined confidence: Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, Combined={combined_confidence:.2f} < 0.25"
     else:
         # Normal activity
         result = "Normal"
-        details = f"Normal activity: Pose={pose_anomaly_detected}, Scene={scene_prob:.3f} (threshold={scene_threshold})"
-        print(f"✅ Tier 1 NORMAL: pose={pose_anomaly_detected}, scene={scene_prob:.3f}")
+        details = f"Normal activity: Pose={pose_anomaly_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}(thresh={scene_threshold:.2f})"
+        # Only log occasionally to reduce spam
+        if scene_prob > 0.10 or pose_anomaly_detected:  # Reduced logging threshold
+            print(f"✅ Tier 1 NORMAL: {details}")
     
     return result, details
 
 def tier2_fusion(audio_transcript, captions, visual_anomaly_max, tier1_details, enhanced_context=None):
-    """Enhanced Tier 2 fusion with additional context for better anomaly reasoning"""
+    """ENHANCED Tier 2 fusion with better error handling and fallback logic"""
     try:
-        visual_summary = " | ".join(captions) if captions else "No captions."
+        print(f"🧠 Starting Tier 2 fusion with enhanced context: {enhanced_context is not None}")
+        
+        visual_summary = " | ".join(captions) if captions else "No visual captions available."
         scene_summary = f"Highest visual anomaly probability: {visual_anomaly_max:.2f}"
         
-        # Enhanced context processing
+        # Enhanced context processing with error handling
         audio_indicators = enhanced_context.get("audio_indicators", []) if enhanced_context else []
         scene_analysis = enhanced_context.get("scene_analysis", {}) if enhanced_context else {}
         anomaly_type = enhanced_context.get("anomaly_type", "unknown") if enhanced_context else "unknown"
         pose_context = enhanced_context.get("pose_context", {}) if enhanced_context else {}
         
-        # Build enhanced prompt with structured context
-        context_details = ""
-        if audio_indicators:
-            context_details += f"- Audio Indicators: {', '.join(audio_indicators)}\n"
-        if scene_analysis.get("description"):
-            context_details += f"- Enhanced Scene Analysis: {scene_analysis['description']} (confidence: {scene_analysis.get('confidence', 0):.2f})\n"
-        if anomaly_type != "unknown":
-            context_details += f"- Detected Anomaly Type: {anomaly_type}\n"
-        if pose_context.get("summary"):
-            context_details += f"- Pose Context: {pose_context['summary']}\n"
+        # INTELLIGENT fallback scoring before trying AI
+        fallback_visual_score = min(0.9, max(0.1, visual_anomaly_max * 1.8))
+        fallback_audio_score = 0.8 if audio_indicators else (0.4 if audio_transcript and len(audio_transcript.strip()) > 10 else 0.1)
+        fallback_threat = min(0.9, (fallback_visual_score + fallback_audio_score) / 2)
         
-        prompt = (
-            f"You are an expert anomaly analyst. Provide detailed analysis and reasoning for this anomaly detection case. "
-            f"Return ONLY a valid JSON object with no additional text or formatting.\n\n"
-            f"INPUT DATA:\n"
-            f"- Tier 1 Simple Detection: {tier1_details}\n"
-            f"- Audio Transcript: {audio_transcript or 'No audio detected'}\n"
-            f"- Visual Scene Description: {visual_summary}\n"
-            f"- Visual Anomaly Probability: {visual_anomaly_max:.2f}\n"
-            f"{context_details}"
-            f"\nANALYSIS REQUIREMENTS:\n"
-            f"Provide detailed reasoning that MUST include:\n"
-            f"1. POSE ANALYSIS: What does the pose data suggest? (normal posture, aggressive stance, fall position, etc.)\n"
-            f"2. SCENE ANALYSIS: What does the visual scene show? How confident are we in this assessment?\n"
-            f"3. AUDIO ANALYSIS: Any verbal indicators of distress, aggression, or normalcy?\n"
-            f"4. MULTIMODAL CORRELATION: How do all the indicators align? Do they support each other or contradict?\n"
-            f"5. ANOMALY TYPE: What specific type of anomaly is most likely? (fall, aggression, medical emergency, false positive)\n"
-            f"6. CONFIDENCE ASSESSMENT: How certain is this detection and why?\n"
-            f"7. THREAT LEVEL JUSTIFICATION: Why this specific threat severity score?\n\n"
-            f"Return JSON with these exact keys:\n"
-            f'{{"visual_score": <0-1 float>, "audio_score": <0-1 float>, "text_alignment_score": <0-1 float>, '
-            f'"multimodal_agreement": <0-1 float>, "reasoning_summary": "<comprehensive 4-6 sentence analysis covering ALL points above>", "threat_severity_index": <0-1 float>}}'
-        )
+        # Enhanced fallback result
+        fallback_result = {
+            "visual_score": fallback_visual_score,
+            "audio_score": fallback_audio_score,
+            "text_alignment_score": 0.5,
+            "multimodal_agreement": min(0.8, (fallback_visual_score + fallback_audio_score) / 2),
+            "reasoning_summary": f"Analysis based on {anomaly_type} type detection with visual confidence {visual_anomaly_max:.2f} and {len(audio_indicators)} audio indicators.",
+            "threat_severity_index": fallback_threat
+        }
         
-        print(f"Tier 2 fusion prompt: {prompt}")  # Debug logging
-        
+        # Check if Groq is available
         if groq_client is None:
-            print("Warning: Groq client not available, using fallback response")
-            return {
-                "status": "Suspected Anomaly",
-                "visual_score": 0.6,
-                "audio_score": 0.5,
-                "multimodal_agreement": 0.5,
-                "reasoning_summary": "AI analysis unavailable - using basic detection",
-                "threat_severity_index": 0.6
-            }
+            print("⚠️ Groq client not available, using intelligent fallback")
+            return fallback_result
         
-        response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama3-70b-8192",
-            temperature=0.1  # Lower temperature for more consistent JSON output
-        )
-        output = response.choices[0].message.content.strip()
-        print(f"Tier 2 fusion raw response: {output}")  # Debug logging
+        # Build enhanced prompt with better structure
+        context_details = []
+        if audio_indicators:
+            context_details.append(f"Audio Indicators: {', '.join(audio_indicators)}")
+        if scene_analysis.get("description"):
+            context_details.append(f"Scene Analysis: {scene_analysis['description']} (confidence: {scene_analysis.get('confidence', 0):.2f})")
+        if anomaly_type != "unknown":
+            context_details.append(f"Detected Anomaly Type: {anomaly_type}")
+        if pose_context.get("summary"):
+            context_details.append(f"Pose Context: {pose_context['summary']}")
+            
+        context_str = "\n- ".join(context_details) if context_details else "Limited context available"
         
-        # Clean up the response to extract JSON
-        if "```json" in output:
-            output = output.split("```json")[1].split("```")[0].strip()
-        elif "```" in output:
-            output = output.split("```")[1].split("```")[0].strip()
+        # Simplified, more reliable prompt
+        prompt = f"""Analyze this anomaly detection case and return ONLY valid JSON.
+
+INPUT DATA:
+- Tier 1 Detection: {tier1_details}
+- Audio: {audio_transcript or 'No audio'}
+- Visual: {visual_summary}
+- Visual Anomaly Score: {visual_anomaly_max:.2f}
+- {context_str}
+
+Return JSON with exactly these keys:
+{{"visual_score": <0-1>, "audio_score": <0-1>, "text_alignment_score": <0-1>, "multimodal_agreement": <0-1>, "reasoning_summary": "<analysis>", "threat_severity_index": <0-1>}}"""
+
+        print(f"🤖 Sending request to Groq API...")
         
-        # Try to parse JSON
-        result = json.loads(output)
-        
-        # Validate required keys
-        required_keys = ["visual_score", "audio_score", "text_alignment_score", 
-                        "multimodal_agreement", "reasoning_summary", "threat_severity_index"]
-        
-        for key in required_keys:
-            if key not in result:
-                raise KeyError(f"Missing required key: {key}")
-        
-        # Validate score ranges
-        for score_key in ["visual_score", "audio_score", "text_alignment_score", 
-                         "multimodal_agreement", "threat_severity_index"]:
-            if not (0 <= result[score_key] <= 1):
-                result[score_key] = max(0, min(1, result[score_key]))  # Clamp to 0-1
-        
-        print(f"Tier 2 fusion successful: {result}")  # Debug logging
-        return result
-        
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error in tier2_fusion: {e}")
-        print(f"Raw output: {output}")
+        # Try AI analysis with timeout and error handling
+        try:
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama3-70b-8192",
+                temperature=0.1,
+                max_tokens=500  # Limit response size
+            )
+            
+            output = response.choices[0].message.content.strip()
+            print(f"🤖 Raw AI response length: {len(output)} chars")
+            
+            # Clean JSON extraction
+            json_start = output.find('{')
+            json_end = output.rfind('}') + 1
+            
+            if json_start == -1 or json_end == 0:
+                raise ValueError("No JSON found in response")
+                
+            json_str = output[json_start:json_end]
+            result = json.loads(json_str)
+            
+            # Validate and sanitize result
+            required_keys = ["visual_score", "audio_score", "text_alignment_score", 
+                           "multimodal_agreement", "reasoning_summary", "threat_severity_index"]
+            
+            for key in required_keys:
+                if key not in result:
+                    print(f"⚠️ Missing key {key}, using fallback")
+                    return fallback_result
+                    
+            # Sanitize numeric values
+            for score_key in ["visual_score", "audio_score", "text_alignment_score", 
+                             "multimodal_agreement", "threat_severity_index"]:
+                if not isinstance(result[score_key], (int, float)) or not (0 <= result[score_key] <= 1):
+                    result[score_key] = fallback_result[score_key]
+            
+            # Ensure reasoning is a string
+            if not isinstance(result["reasoning_summary"], str) or len(result["reasoning_summary"]) < 10:
+                result["reasoning_summary"] = fallback_result["reasoning_summary"]
+            
+            print(f"✅ AI analysis successful: threat={result['threat_severity_index']:.2f}")
+            return result
+            
+        except Exception as ai_error:
+            print(f"🤖 AI analysis failed: {ai_error}")
+            return fallback_result
+            
     except Exception as e:
-        print(f"Error in tier2_fusion: {e}")
-    
-    # Enhanced fallback with actual data-based scoring
-    fallback_visual_score = min(1.0, visual_anomaly_max * 2)  # Scale up the visual score
-    fallback_audio_score = 0.3 if audio_transcript and len(audio_transcript.strip()) > 0 else 0.1
-    fallback_threat = (fallback_visual_score + fallback_audio_score) / 2
-    
-    result = {
-        "visual_score": fallback_visual_score,
-        "audio_score": fallback_audio_score,
-        "text_alignment_score": 0.4,
-        "multimodal_agreement": 0.4,
-        "reasoning_summary": f"Fallback analysis: Visual anomaly {visual_anomaly_max:.2f}, Audio available: {bool(audio_transcript)}",
-        "threat_severity_index": fallback_threat
-    }
-    print(f"Using fallback tier2 result: {result}")
-    return result
+        print(f"❌ Tier 2 fusion error: {e}")
+        # Final emergency fallback
+        return {
+            "visual_score": 0.5,
+            "audio_score": 0.3,
+            "text_alignment_score": 0.4,
+            "multimodal_agreement": 0.4,
+            "reasoning_summary": "Emergency fallback due to processing error",
+            "threat_severity_index": 0.5
+        }

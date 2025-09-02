@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const UserDashboard = ({ user, onLogout, onStartMonitoring }) => {
   const [dashboardData, setDashboardData] = useState(null);
@@ -99,7 +99,9 @@ const UserDashboard = ({ user, onLogout, onStartMonitoring }) => {
     return () => {
       fetchingRef.current = false;
     };
-  }, [user?.username]);  const fetchTier2Analysis = async (anomalyId) => {
+  }, [user?.username, dashboardData, loading]); // Added missing dependencies
+
+  const fetchTier2Analysis = async (anomalyId) => {
     try {
       // Find the anomaly in the current anomalies list
       const anomaly = anomalies.find(a => a.id === anomalyId || a.frame_id === anomalyId);

@@ -19,7 +19,8 @@ const LiveCameraMonitoring = ({
   onToggleJson,
   onDisconnect,
   onDownloadData,
-  videoFrame
+  videoFrame,
+  tier2InProgress
 }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black cyber-grid-bg">
@@ -76,6 +77,27 @@ const LiveCameraMonitoring = ({
             inputMode="live"
           />
         </div>
+
+        {/* Analysis Status Banner - Show when Tier 2 is in progress */}
+        {tier2InProgress && (
+          <div className="mb-8 cyber-card bg-gradient-to-r from-yellow-900/20 to-orange-900/20 border-yellow-400/60 p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-yellow-500/20 rounded-xl flex items-center justify-center border border-yellow-400/40">
+                <svg className="w-6 h-6 text-yellow-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-yellow-400 font-mono mb-1">🧠 TIER 2 AI ANALYSIS IN PROGRESS</h3>
+                <p className="text-yellow-300 font-mono text-sm">Advanced multimodal AI is analyzing the detected anomaly. This may take 10-30 seconds...</p>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 rounded-lg border border-yellow-400/30">
+                <div className="w-2 h-2 bg-yellow-400 rounded-full cyber-pulse"></div>
+                <span className="text-yellow-400 font-mono font-bold text-sm">ANALYZING</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content Grid - Proper Layout */}
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-8 mb-8">
@@ -135,12 +157,44 @@ const LiveCameraMonitoring = ({
                     {anomalyStatus === 'Anomaly Detected' ? 'ALERT' : 'NORMAL'}
                   </span>
                 </div>
+                {/* AI Analysis Status */}
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300 font-mono text-sm">AI Analysis</span>
+                  <span className={`font-mono font-bold text-xs flex items-center gap-1 ${
+                    tier2InProgress ? 'text-yellow-400' : 'text-gray-400'
+                  }`}>
+                    {tier2InProgress ? (
+                      <>
+                        <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        TIER 2 ACTIVE
+                      </>
+                    ) : (
+                      'STANDBY'
+                    )}
+                  </span>
+                </div>
               </div>
               
               {/* Current Details */}
-              <div className="mt-6 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+              <div className={`mt-6 p-3 rounded-lg border transition-all duration-500 ${
+                tier2InProgress 
+                  ? 'bg-yellow-800/20 border-yellow-400/30' 
+                  : anomalyStatus === 'Anomaly Detected'
+                    ? 'bg-red-800/20 border-red-400/30'
+                    : 'bg-gray-800/50 border-gray-700/50'
+              }`}>
                 <h4 className="text-xs font-mono text-gray-400 mb-2">CURRENT ACTIVITY:</h4>
-                <p className="text-cyan-400 font-mono text-sm">{currentDetails}</p>
+                <p className={`font-mono text-sm ${
+                  tier2InProgress 
+                    ? 'text-yellow-400' 
+                    : anomalyStatus === 'Anomaly Detected'
+                      ? 'text-red-400'
+                      : 'text-cyan-400'
+                }`}>
+                  {currentDetails}
+                </p>
               </div>
             </div>
 
