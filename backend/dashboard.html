@@ -791,6 +791,12 @@
                     <button class="cyber-btn" onclick="forceCreatePipelineCard()" style="background: #ff6600; margin-left: 10px;">
                         🧪 TEST PIPELINE CARD
                     </button>
+                    <button class="cyber-btn" onclick="testWebSocketAnomaly()" style="background: #ff0066; margin-left: 10px;">
+                        📡 TEST WEBSOCKET
+                    </button>
+                    <button class="cyber-btn" onclick="debugDashboardStatus()" style="background: #6600ff; margin-left: 10px;">
+                        🔍 DEBUG STATUS
+                    </button>
                 </div>
 
                 <!-- Real-time Stats -->
@@ -1114,9 +1120,25 @@
                     // Display JSON output
                     document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
                     
-                    // 🎯 PIPELINE CARD CREATION: ONLY for "Suspected Anomaly" status
-                    if (data.status === 'Suspected Anomaly') {
-                        console.log('🚨🚨🚨 SUSPECTED ANOMALY DETECTED - CREATING PIPELINE CARD NOW! 🚨🚨🚨');
+                    // 🎯 PIPELINE CARD CREATION: Check for MULTIPLE anomaly indicators
+                    const isAnomalyMessage = (
+                        data.status === 'Suspected Anomaly' ||
+                        data.type === 'new_anomaly' ||
+                        (data.details && data.details.toLowerCase().includes('anomaly')) ||
+                        (data.tier1_components && 
+                         (data.tier1_components.scene_analysis?.anomaly_probability > 0.7 ||
+                          data.tier1_components.pose_analysis?.anomaly_detected === true))
+                    );
+                    
+                    if (isAnomalyMessage) {
+                        console.log('🚨🚨🚨 ANOMALY DETECTED - CREATING PIPELINE CARD NOW! 🚨🚨🚨');
+                        console.log('📋 Anomaly detection reason:', {
+                            status: data.status,
+                            type: data.type,
+                            details: data.details,
+                            scene_prob: data.tier1_components?.scene_analysis?.anomaly_probability,
+                            pose_detected: data.tier1_components?.pose_analysis?.anomaly_detected
+                        });
                         console.log('📋 Full data for card creation:', JSON.stringify(data, null, 2));
                         
                         // FORCE CREATE PIPELINE CARD
@@ -1124,6 +1146,12 @@
                         console.log('✅✅✅ PIPELINE CARD CREATION FORCED! ✅✅✅');
                     } else {
                         console.log(`ℹ️ Status is "${data.status}" - not creating pipeline card`);
+                        console.log('🔍 Anomaly check details:', {
+                            status: data.status,
+                            type: data.type,
+                            hasDetails: !!data.details,
+                            hasComponents: !!data.tier1_components
+                        });
                     }
                     
                     if (data.error) {
@@ -1330,17 +1358,24 @@
         function createPipelineCard(tier1Data) {
             console.log('🃏 Creating pipeline card for SUSPECTED ANOMALY:', tier1Data);
             
-            // Simple ID generation
-            const cardId = `pipeline-${Date.now()}`;
-            const timestamp = new Date().toLocaleTimeString();
+            // Validation check
+            if (!tier1Data) {
+                console.error('❌ createPipelineCard called with null/undefined data');
+                return;
+            }
             
-            // Get data safely with fallbacks
-            const tier1Components = tier1Data.tier1_components || {};
-            const poseAnalysis = tier1Components.pose_analysis || {};
-            const audioAnalysis = tier1Components.audio_analysis || {};
-            const sceneAnalysis = tier1Components.scene_analysis || {};
-            
-            console.log('🧩 Components:', { poseAnalysis, audioAnalysis, sceneAnalysis });
+            try {
+                // Simple ID generation
+                const cardId = `pipeline-${Date.now()}`;
+                const timestamp = new Date().toLocaleTimeString();
+                
+                // Get data safely with fallbacks
+                const tier1Components = tier1Data.tier1_components || {};
+                const poseAnalysis = tier1Components.pose_analysis || {};
+                const audioAnalysis = tier1Components.audio_analysis || {};
+                const sceneAnalysis = tier1Components.scene_analysis || {};
+                
+                console.log('🧩 Components:', { poseAnalysis, audioAnalysis, sceneAnalysis });
             
             // Add to pipeline cards array FIRST
             pipelineCards.unshift({
@@ -1405,6 +1440,12 @@
             
             console.log('✅ Pipeline card HTML inserted for SUSPECTED ANOMALY');
             console.log('🔍 Container children count:', container.children.length);
+            
+            } catch (error) {
+                console.error('❌ Error in createPipelineCard:', error);
+                console.error('❌ Error stack:', error.stack);
+                console.error('❌ Input data was:', tier1Data);
+            }
         }
 
         function updatePipelineDisplay() {
@@ -2141,6 +2182,60 @@
             } catch (error) {
                 console.error('❌ ERROR CREATING TEST PIPELINE CARD:', error);
             }
+        }
+        
+        // 🧪 TEST FUNCTION: Test WebSocket anomaly endpoint
+        function testWebSocketAnomaly() {
+            console.log('🧪 TESTING WEBSOCKET ANOMALY ENDPOINT');
+            
+            fetch('/debug/test_websocket')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('📡 WebSocket test result:', data);
+                    if (data.success) {
+                        alert('✅ Test anomaly sent via WebSocket! Check console for details.');
+                    } else {
+                        alert('❌ WebSocket test failed: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ WebSocket test error:', error);
+                    alert('❌ WebSocket test error: ' + error.message);
+                });
+        }
+        
+        // 🔍 DEBUG FUNCTION: Check WebSocket and dashboard status
+        function debugDashboardStatus() {
+            console.log('🔍 DASHBOARD DEBUG STATUS:');
+            console.log('📡 WebSocket state:', ws ? ws.readyState : 'No WebSocket');
+            console.log('📡 WebSocket ready states:', {
+                'CONNECTING': 0,
+                'OPEN': 1, 
+                'CLOSING': 2,
+                'CLOSED': 3,
+                'current': ws ? ws.readyState : 'N/A'
+            });
+            console.log('🎯 Pipeline cards count:', pipelineCards.length);
+            console.log('🎯 Anomalies count:', anomalies.length);
+            console.log('📊 Monitoring status:', isMonitoring);
+            
+            // Test if container exists
+            const container = document.getElementById('pipelineCards');
+            console.log('📦 Pipeline container:', {
+                exists: !!container,
+                id: container?.id,
+                children: container?.children.length
+            });
+            
+            // Fetch backend status
+            fetch('/debug/dashboard_status')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('🔙 Backend status:', data);
+                })
+                .catch(error => {
+                    console.error('❌ Backend status error:', error);
+                });
         }
     </script>
 </body>

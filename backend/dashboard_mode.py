@@ -27,9 +27,12 @@ class DashboardMode:
     
     def add_dashboard_anomaly(self, anomaly_data: dict) -> dict:
         """Add anomaly for CURRENT SESSION dashboard display only"""
+        # CRITICAL FIX: Always add anomalies when dashboard mode is active
         # Only add if we have an active monitoring session
         if not self.session_metadata.get('monitoring_active', False):
             print("⚠️ Dashboard: Ignoring anomaly - no active monitoring session")
+            print(f"🔍 Debug: monitoring_active = {self.session_metadata.get('monitoring_active', False)}")
+            print(f"🔍 Debug: session_metadata = {self.session_metadata}")
             return None
             
         # Simplified anomaly data for current session dashboard
@@ -160,7 +163,10 @@ class DashboardMode:
         if not self.session_metadata.get('session_start'):
             self.session_metadata['session_start'] = datetime.now().isoformat()
         
-        print("✅ Dashboard: Ready for live monitoring (no sample data)")
+        # CRITICAL FIX: Always activate monitoring when dashboard session starts
+        self.session_metadata['monitoring_active'] = True
+        
+        print("✅ Dashboard: Ready for live monitoring (monitoring_active = True)")
     
     # REMOVED _populate_sample_anomalies - we only want LIVE session data
 
