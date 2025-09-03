@@ -78,14 +78,34 @@ def tier1_fusion(pose_summary, audio_summary, scene_summary):
             audio_detected = False
             audio_confidence = 0.0
         else:
-            # Critical emergency keywords (high precision)
+            # Critical emergency keywords (high precision) - ENHANCED with environmental hazards
             critical_keywords = ["help me", "emergency", "call 911", "heart attack", "fire", "ambulance"]
+            environmental_keywords = ["fire", "flood", "flooding", "water everywhere", "gas leak", "smoke", "burning"]
+            security_keywords = ["thief", "burglar", "break in", "stolen", "robbery", "intruder", "break-in"]
+            workplace_keywords = ["accident", "injured", "fell", "machinery", "safety", "hurt at work"]
+            electrical_keywords = ["shock", "electrocuted", "power out", "sparks", "electrical fire", "short circuit"]
             urgent_keywords = ["help", "stop", "hurt", "pain", "no", "911", "police"]
             concern_keywords = ["please", "wait", "scared", "call", "what", "why"]
             
             if any(word in audio_lower for word in critical_keywords):
                 audio_detected = True
                 audio_confidence = 0.95
+            elif any(word in audio_lower for word in environmental_keywords):
+                audio_detected = True
+                audio_confidence = 0.90  # High confidence for environmental emergencies
+                print(f"🚨 ENVIRONMENTAL EMERGENCY AUDIO: '{audio_summary[:50]}'")
+            elif any(word in audio_lower for word in security_keywords):
+                audio_detected = True
+                audio_confidence = 0.85  # High confidence for security breaches
+                print(f"🔒 SECURITY BREACH AUDIO: '{audio_summary[:50]}'")
+            elif any(word in audio_lower for word in workplace_keywords):
+                audio_detected = True
+                audio_confidence = 0.80  # High confidence for workplace accidents
+                print(f"🔧 WORKPLACE ACCIDENT AUDIO: '{audio_summary[:50]}'")
+            elif any(word in audio_lower for word in electrical_keywords):
+                audio_detected = True
+                audio_confidence = 0.88  # High confidence for electrical emergencies
+                print(f"⚡ ELECTRICAL EMERGENCY AUDIO: '{audio_summary[:50]}'")
             elif any(word in audio_lower for word in urgent_keywords):
                 audio_detected = True
                 audio_confidence = 0.8
