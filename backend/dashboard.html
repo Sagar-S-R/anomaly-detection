@@ -737,7 +737,7 @@
     
     <div class="container">
         <header class="main-header">
-            <h1>🛡️ NEXUS ANOMALY DETECTION</h1>
+            <h1>🛡️ ANOMALY DETECTION</h1>
             <div class="subtitle">REAL-TIME THREAT MONITORING DASHBOARD</div>
         </header>
         
@@ -750,53 +750,75 @@
                 <div class="current-details" id="currentDetails">System ready for anomaly detection...</div>
                 
                 <div class="video-container">
-                    <img id="liveVideoStream" 
-                         src="/video_stream" 
-                         alt="Live Video Stream" 
-                         style="width: 100%; max-width: 800px; display: block;"
-                         onload="handleVideoLoad()"
-                         onerror="handleVideoError(this)"
-                         onabort="handleVideoAbort(this)">
+                    <!-- Canvas for continuous frame display with reasoning -->
+                    <canvas id="liveVideoCanvas" width="640" height="480" 
+                           style="width: 100%; max-width: 800px; border: 2px solid var(--cyber-primary); border-radius: 10px;">
+                    </canvas>
+                    
+                    <!-- Frame Analysis Controls -->
+                    <div id="frameControls" style="margin-top: 15px; padding: 15px; border: 1px solid var(--cyber-secondary); border-radius: 8px; background: rgba(0, 255, 255, 0.1);">
+                        <!-- Live Frame Reasoning Display -->
+                        <div id="liveFrameReasoning" style="padding: 15px; background: rgba(0, 0, 0, 0.7); border-radius: 8px; border: 1px solid var(--cyber-primary);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+                                <div><strong>🆔 Frame ID:</strong> <span id="currentFrameId" style="color: var(--cyber-yellow);">-</span></div>
+                                <div><strong>⏰ Time:</strong> <span id="currentTimestamp" style="color: var(--cyber-yellow);">-</span></div>
+                                <div><strong>📊 Status:</strong> <span id="currentStatus" style="color: var(--cyber-green);">-</span></div>
+                                <div><strong>🎯 Confidence:</strong> <span id="currentConfidence" style="color: var(--cyber-yellow);">-</span></div>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <strong>🎭 Detected Objects:</strong> 
+                                <span id="detectedObjects" style="color: var(--cyber-cyan);">None</span>
+                            </div>
+                            
+                            <div>
+                                <strong>🧠 AI Reasoning:</strong>
+                                <div id="currentReasoning" style="margin-top: 8px; padding: 15px; background: rgba(0, 255, 255, 0.15); border-radius: 5px; border-left: 3px solid var(--cyber-primary); font-family: 'Courier New', monospace; color: var(--cyber-cyan); max-height: 300px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; font-size: 0.9rem;">
+                                    Waiting for continuous analysis...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div style="margin-top: 10px; font-size: 0.9rem; color: rgba(0, 255, 255, 0.7);">
-                        📡 Real-time feed with OpenCV anomaly overlay (🟢 Normal / 🔴 Anomaly)
+                        📡 Real-time WebSocket feed with continuous AI analysis and reasoning display
                     </div>
                     <div id="videoStreamStatus" style="margin-top: 5px; font-size: 0.8rem; color: var(--cyber-yellow);">
-                        📹 Initializing camera stream...
+                        📹 WebSocket Ready - Click START MONITORING
                     </div>
                     <div style="margin-top: 5px; font-size: 0.7rem; color: rgba(0, 255, 255, 0.5);">
-                        🔄 Auto-refresh: <span id="autoRefreshStatus">OFF</span> | 
-                        📊 Stream FPS: <span id="streamFPS">0</span>
+                        🔄 Frame Rate: <span id="streamFPS">0</span> FPS | 
+                        📊 Total Frames: <span id="totalFrames">0</span> | 
+                        🚨 Anomalies: <span id="anomalyCount">0</span>
                     </div>
                 </div>
                 
                 <div class="stream-controls" style="margin-top: 20px;">
-                    <button class="cyber-btn start-btn" onclick="connectWebSocket()">
+                    <button class="cyber-btn start-btn" onclick="startMonitoring()">
                         🚀 START MONITORING
                     </button>
-                    <button class="cyber-btn stop-btn" onclick="disconnectWebSocket()">
+                    <button class="cyber-btn stop-btn" onclick="stopMonitoring()">
                         🛑 STOP MONITORING
                     </button>
                     <button class="cyber-btn info-btn" onclick="clearSession()">
                         🧹 CLEAR SESSION
                     </button>
-                    <button class="cyber-btn info-btn" onclick="toggleStreamDisplay()">
-                        👁️ TOGGLE STREAM
-                    </button>
-                    <button class="cyber-btn info-btn" onclick="restartVideoStream()">
-                        🔄 REFRESH FEED
-                    </button>
-                    <button class="cyber-btn info-btn" onclick="toggleVideoAutoRefresh()">
-                        ⚡ TOGGLE AUTO-REFRESH
-                    </button>
-                    <button class="cyber-btn" onclick="forceCreatePipelineCard()" style="background: #ff6600; margin-left: 10px;">
-                        🧪 TEST PIPELINE CARD
-                    </button>
-                    <button class="cyber-btn" onclick="testWebSocketAnomaly()" style="background: #ff0066; margin-left: 10px;">
-                        📡 TEST WEBSOCKET
-                    </button>
-                    <button class="cyber-btn" onclick="debugDashboardStatus()" style="background: #6600ff; margin-left: 10px;">
-                        🔍 DEBUG STATUS
-                    </button>
+                    
+                    <!-- Frame Filter Section -->
+                    <div style="margin-top: 20px; padding: 15px; border: 2px solid var(--cyber-green); border-radius: 10px; background: rgba(0, 255, 136, 0.05);">
+                        <h4 style="color: var(--cyber-green); margin-bottom: 15px; text-align: center;">🎯 FRAME FILTER</h4>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button id="filterAll" class="cyber-btn" onclick="setFrameFilter('all')" style="background: rgba(0, 255, 255, 0.2); border-color: var(--cyber-primary);">
+                                📺 ALL FRAMES
+                            </button>
+                            <button id="filterNormal" class="cyber-btn" onclick="setFrameFilter('normal')" style="border-color: var(--cyber-green); color: var(--cyber-green);">
+                                ✅ NORMAL ONLY
+                            </button>
+                            <button id="filterAnomalies" class="cyber-btn" onclick="setFrameFilter('anomalies')" style="border-color: var(--cyber-red); color: var(--cyber-red);">
+                                🚨 ANOMALIES ONLY
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Real-time Stats -->
@@ -879,17 +901,7 @@
                 </div>
             </div>
             
-            <!-- Session Video Playback Controls -->
-            <div id="videoPlaybackSection" style="display: none; margin-bottom: 20px; padding: 15px; border: 2px solid var(--cyber-blue); border-radius: 10px; background: rgba(26, 26, 26, 0.3);">
-                <h3 style="color: var(--cyber-blue); margin-bottom: 10px;">📹 Session Video Playback</h3>
-                <video id="sessionVideo" controls style="width: 100%; max-width: 600px; border-radius: 8px; border: 2px solid var(--cyber-blue);">
-                    Your browser does not support the video tag.
-                </video>
-                <div style="margin-top: 10px;">
-                    <button class="cyber-btn info-btn" onclick="loadSessionVideo()" style="width: auto; margin-right: 10px;">Load Current Session Video</button>
-                    <span id="videoStatus" style="color: var(--cyber-green); font-size: 0.9rem;"></span>
-                </div>
-            </div>
+            <!-- Video Playback Removed - Dashboard focuses on live monitoring only -->
             
             <div class="frame-grid" id="anomalyFrames">
                 <div style="text-align: center; padding: 40px; color: var(--cyber-green); grid-column: 1 / -1;">
@@ -915,6 +927,9 @@
         let lastVideoLoad = 0;
         let streamFPS = 0;
         let fpsCounter = 0;
+
+        // 🎥 CONTINUOUS FRAME PROCESSING VARIABLES
+        let currentFilter = 'all'; // 'all', 'normal', 'anomalies'
 
         // Video stream event handlers
         function handleVideoLoad() {
@@ -955,6 +970,394 @@
             document.getElementById('videoStreamStatus').textContent = '⚠️ Stream connection interrupted';
             document.getElementById('videoStreamStatus').style.color = 'var(--cyber-yellow)';
         }
+
+        // 🎥 CONTINUOUS FRAME PROCESSING FUNCTIONS
+        let canvas = null;
+        let ctx = null;
+        let frameStats = {
+            totalFrames: 0,
+            anomalyFrames: 0,
+            normalFrames: 0,
+            lastFPS: 0,
+            fpsStartTime: Date.now(),
+            frameTimestamps: []
+        };
+
+        function initializeCanvas() {
+            canvas = document.getElementById('liveVideoCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Set canvas style for cyber theme
+            canvas.style.border = '2px solid var(--cyber-primary)';
+            canvas.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.3)';
+        }
+
+        function displayFrameOnCanvas(frameBase64) {
+            if (!canvas || !ctx) {
+                initializeCanvas();
+            }
+            
+            const img = new Image();
+            img.onload = function() {
+                // Clear canvas and draw frame
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            img.src = 'data:image/jpeg;base64,' + frameBase64;
+        }
+
+        function updateLiveFrameAnalysis(frameData) {
+            // Update frame details
+            document.getElementById('currentFrameId').textContent = frameData.frame_id;
+            document.getElementById('currentTimestamp').textContent = frameData.analysis_time || new Date(frameData.timestamp * 1000).toLocaleTimeString();
+            document.getElementById('currentConfidence').textContent = (frameData.confidence * 100).toFixed(1) + '%';
+            
+            // ✨ FULL REASONING DISPLAY - No truncation!
+            const reasoningElement = document.getElementById('currentReasoning');
+            reasoningElement.innerHTML = `<pre style="white-space: pre-wrap; margin: 0; font-family: 'Courier New', monospace; font-size: 0.9rem;">${frameData.reasoning || 'No analysis available'}</pre>`;
+            
+            // Update status with color coding
+            const statusElement = document.getElementById('currentStatus');
+            statusElement.textContent = frameData.status;
+            
+            if (frameData.is_anomaly) {
+                statusElement.style.color = 'var(--cyber-red)';
+                canvas.style.border = '3px solid var(--cyber-red)';
+                canvas.style.boxShadow = '0 0 25px rgba(255, 0, 0, 0.6)';
+            } else {
+                statusElement.style.color = 'var(--cyber-green)';
+                canvas.style.border = '2px solid var(--cyber-primary)';
+                canvas.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.3)';
+            }
+            
+            // Update detected objects
+            const objectsText = frameData.detected_objects && frameData.detected_objects.length > 0 
+                ? frameData.detected_objects.join(', ') 
+                : 'None detected';
+            document.getElementById('detectedObjects').textContent = objectsText;
+        }
+
+        function updateFrameStats(frameData) {
+            frameStats.totalFrames++;
+            
+            if (frameData.is_anomaly) {
+                frameStats.anomalyFrames++;
+            } else {
+                frameStats.normalFrames++;
+            }
+            
+            // Calculate FPS
+            const now = Date.now();
+            frameStats.frameTimestamps.push(now);
+            
+            // Keep only last 30 timestamps for FPS calculation
+            if (frameStats.frameTimestamps.length > 30) {
+                frameStats.frameTimestamps.shift();
+            }
+            
+            // Calculate FPS from timestamps
+            if (frameStats.frameTimestamps.length > 1) {
+                const timeSpan = (frameStats.frameTimestamps[frameStats.frameTimestamps.length - 1] - frameStats.frameTimestamps[0]) / 1000;
+                frameStats.lastFPS = (frameStats.frameTimestamps.length - 1) / timeSpan;
+            }
+            
+            // Update UI
+            document.getElementById('streamFPS').textContent = frameStats.lastFPS.toFixed(1);
+            document.getElementById('totalFrames').textContent = frameStats.totalFrames;
+            document.getElementById('anomalyCount').textContent = frameStats.anomalyFrames;
+        }
+
+        // 🎯 FRAME FILTER FUNCTIONS
+        let frameHistory = []; // Store frames for history display
+        
+        function setFrameFilter(type) {
+            currentFilter = type;
+            
+            // Update button styles
+            document.getElementById('filterAll').style.background = type === 'all' ? 'rgba(0, 255, 255, 0.3)' : 'transparent';
+            document.getElementById('filterNormal').style.background = type === 'normal' ? 'rgba(0, 255, 136, 0.3)' : 'transparent';
+            document.getElementById('filterAnomalies').style.background = type === 'anomalies' ? 'rgba(255, 0, 68, 0.3)' : 'transparent';
+            
+            // Update frame history display based on filter
+            displayFrameHistory();
+            
+            console.log(`🎯 Filter changed to: ${type}`);
+        }
+
+        // 🎥 CONTINUOUS FRAME DISPLAY FUNCTIONS
+        function displayContinuousFrame(frameData) {
+            // Get canvas
+            if (!canvas) {
+                canvas = document.getElementById('liveVideoCanvas');
+                if (!canvas) return; // Canvas not ready yet
+                ctx = canvas.getContext('2d');
+            }
+            
+            // ALWAYS show current frame in live display (no filter applied to live view)
+            const img = new Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Update border color based on anomaly status
+                if (frameData.is_anomaly) {
+                    canvas.style.border = '3px solid var(--cyber-red)';
+                    canvas.style.boxShadow = '0 0 25px rgba(255, 0, 68, 0.6)';
+                } else {
+                    canvas.style.border = '2px solid var(--cyber-green)';
+                    canvas.style.boxShadow = '0 0 20px rgba(0, 255, 136, 0.3)';
+                }
+            };
+            img.src = 'data:image/jpeg;base64,' + frameData.frame_data;
+            
+            // Update frame info display
+            updateFrameInfoDisplay(frameData);
+            
+            // Add to frame history (SMART FILTERING)
+            addToFrameHistory(frameData);
+        }
+        
+        function addToFrameHistory(frameData) {
+            // Smart frame history logic:
+            // - Always add anomaly frames
+            // - Add every 10th normal frame to avoid spam
+            // - Keep max 50 frames in history
+            
+            const shouldAddToHistory = frameData.is_anomaly || 
+                                     (frameStats.totalFrames % 10 === 0); // Every 10th frame
+            
+            if (shouldAddToHistory) {
+                frameHistory.unshift({
+                    frame_id: frameData.frame_id,
+                    timestamp: frameData.timestamp,
+                    status: frameData.status,
+                    reasoning: frameData.reasoning,
+                    confidence: frameData.confidence,
+                    is_anomaly: frameData.is_anomaly,
+                    frame_data: frameData.frame_data,
+                    analysis_time: frameData.analysis_time,
+                    detected_objects: frameData.detected_objects || []
+                });
+                
+                // Keep only last 50 frames
+                if (frameHistory.length > 50) {
+                    frameHistory = frameHistory.slice(0, 50);
+                }
+                
+                // Update display if filter allows this frame
+                displayFrameHistory();
+            }
+        }
+        
+        function displayFrameHistory() {
+            const historyContainer = document.getElementById('anomalyFrames');
+            if (!historyContainer) return;
+            
+            // Filter frames based on current filter
+            let filteredFrames = frameHistory;
+            if (currentFilter === 'normal') {
+                filteredFrames = frameHistory.filter(f => !f.is_anomaly);
+            } else if (currentFilter === 'anomalies') {
+                filteredFrames = frameHistory.filter(f => f.is_anomaly);
+            }
+            // For 'all' filter, show all frames (no filtering)
+            
+            if (filteredFrames.length === 0) {
+                const filterText = currentFilter === 'all' ? 'any' : currentFilter;
+                historyContainer.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--cyber-yellow); grid-column: 1 / -1;">
+                        🎯 No ${filterText} frames captured yet
+                        <div style="margin-top: 10px; font-size: 0.8rem; color: rgba(0, 255, 255, 0.7);">
+                            Active filter: ${currentFilter.toUpperCase()} | Total frames: ${frameHistory.length}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            console.log(`🎯 Displaying ${filteredFrames.length} of ${frameHistory.length} frames (filter: ${currentFilter})`);
+            
+            let html = '';
+            filteredFrames.forEach((frame, index) => {
+                const threatClass = frame.is_anomaly ? 'high-threat' : 'low-threat';
+                const borderColor = frame.is_anomaly ? 'var(--cyber-red)' : 'var(--cyber-green)';
+                const statusIcon = frame.is_anomaly ? '🚨' : '✅';
+                
+                // Create enhanced reasoning preview (show FULL details for frame history)
+                let reasoningPreview = frame.reasoning || 'No analysis available';
+                // ✨ SHOW FULL REASONING - No truncation for better analysis visibility
+                
+                html += `
+                    <div class="frame-card ${threatClass}" onclick="showDetailedFrameInfo(${index})">
+                        <div class="threat-indicator ${frame.is_anomaly ? 'threat-high' : 'threat-low'}">
+                            ${statusIcon} ${frame.is_anomaly ? 'ANOMALY' : 'NORMAL'}
+                        </div>
+                        <img class="anomaly-frame" 
+                             src="data:image/jpeg;base64,${frame.frame_data}" 
+                             alt="Frame ${frame.frame_id}"
+                             style="border-color: ${borderColor};">
+                        <div class="frame-info">
+                            <div style="font-weight: 600; margin-bottom: 8px; color: ${borderColor};">
+                                📹 Frame #${frame.frame_id} | ⏰ ${frame.analysis_time}
+                            </div>
+                            <div style="font-size: 0.9rem; margin-bottom: 5px;">
+                                🎯 Confidence: ${(frame.confidence * 100).toFixed(1)}% | 
+                                📊 Status: ${frame.status}
+                            </div>
+                            <div style="font-size: 0.85rem; color: rgba(0, 255, 255, 0.8); line-height: 1.4; max-height: none; overflow: visible; white-space: pre-wrap;">
+                                <strong>🧠 Full Analysis:</strong><br>
+                                ${reasoningPreview}
+                            </div>
+                            <div style="margin-top: 8px; font-size: 0.75rem; color: var(--cyber-yellow);">
+                                📱 Click for detailed analysis
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            historyContainer.innerHTML = html;
+        }
+
+        function updateFrameInfoDisplay(frameData) {
+            // Update frame details (same format as frontend)
+            document.getElementById('currentFrameId').textContent = frameData.frame_id || '-';
+            document.getElementById('currentTimestamp').textContent = frameData.analysis_time || '-';
+            document.getElementById('currentConfidence').textContent = frameData.confidence ? (frameData.confidence * 100).toFixed(1) + '%' : '-';
+            
+            // Update status with color
+            const statusElement = document.getElementById('currentStatus');
+            statusElement.textContent = frameData.status || 'Processing';
+            statusElement.style.color = frameData.is_anomaly ? 'var(--cyber-red)' : 'var(--cyber-green)';
+            
+            // Update detected objects
+            const objectsText = frameData.detected_objects && frameData.detected_objects.length > 0 
+                ? frameData.detected_objects.join(', ') 
+                : 'None detected';
+            document.getElementById('detectedObjects').textContent = objectsText;
+            
+            // Enhanced AI reasoning display (detailed breakdown like frontend)
+            let enhancedReasoning = frameData.reasoning || 'Analyzing frame...';
+            
+            // If we have tier1_components, create detailed reasoning
+            if (frameData.tier1_components) {
+                const components = frameData.tier1_components;
+                enhancedReasoning = `
+🎯 TIER 1 ANALYSIS:
+• Pose Analysis: ${components.pose_analysis?.summary || 'N/A'}
+• Audio Analysis: ${components.audio_analysis?.summary || 'No audio'}
+• Scene Analysis: ${components.scene_analysis?.summary || 'N/A'} 
+• Final Decision: ${components.fusion_logic?.details || frameData.details || 'Normal operation'}
+
+🔍 TECHNICAL DETAILS:
+• Scene Probability: ${(components.scene_analysis?.anomaly_probability || 0).toFixed(3)}
+• Pose Confidence: ${(components.pose_analysis?.raw_score || 0).toFixed(2)}
+• Fusion Status: ${components.fusion_logic?.final_status || 'Normal'}
+                `.trim();
+            }
+            
+            document.getElementById('currentReasoning').textContent = enhancedReasoning;
+            
+            // Update frame stats
+            frameStats.totalFrames++;
+            if (frameData.is_anomaly) {
+                frameStats.anomalyFrames++;
+            } else {
+                frameStats.normalFrames++;
+            }
+            
+            // Update UI counters
+            document.getElementById('totalFrames').textContent = frameStats.totalFrames;
+            document.getElementById('anomalyCount').textContent = frameStats.anomalyFrames;
+        }
+
+        // START/STOP MONITORING FUNCTIONS
+        function startMonitoring() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('WebSocket already connected');
+                return;
+            }
+            
+            console.log('🚀 Starting monitoring...');
+            
+            // Clear previous data
+            anomalies = [];
+            frameStats = { totalFrames: 0, anomalyFrames: 0, normalFrames: 0 };
+            updateStats();
+            displayAnomalyFrames();
+            
+            // Connect WebSocket to dashboard_app.py
+            ws = new WebSocket('ws://localhost:8001/stream_video?username=dashboard_user');
+            
+            ws.onopen = function(event) {
+                console.log('✅ WebSocket connected to dashboard_app.py');
+                updateConnectionStatus(true);
+                document.getElementById('status').textContent = 'Status: 🔍 ACTIVE MONITORING';
+                document.getElementById('status').className = 'status normal';
+                document.getElementById('currentDetails').textContent = '🛡️ AI analyzing continuous video frames with reasoning...';
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('📨 WebSocket message:', data.type);
+                    
+                    // Handle continuous frame data
+                    if (data.type === 'continuous_frame') {
+                        displayContinuousFrame(data);
+                        
+                        // If anomaly, add to anomaly list
+                        if (data.is_anomaly) {
+                            const anomalyData = {
+                                frame_id: data.frame_id,
+                                timestamp: data.timestamp,
+                                details: data.reasoning,
+                                confidence: data.confidence,
+                                detected_objects: data.detected_objects,
+                                analysis_time: data.analysis_time,
+                                frame_data: data.frame_data
+                            };
+                            
+                            anomalies.unshift(anomalyData);
+                            anomalies = anomalies.slice(0, 20); // Keep last 20
+                            displayAnomalyFrames();
+                        }
+                    }
+                    
+                    // Handle other message types
+                    if (data.type === 'tier1_detection') {
+                        handleTier1Detection(data);
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Error processing WebSocket message:', error);
+                }
+            };
+
+            ws.onclose = function(event) {
+                console.log('🔌 WebSocket closed');
+                updateConnectionStatus(false);
+                document.getElementById('status').textContent = 'Status: 🔌 DISCONNECTED';
+                document.getElementById('status').className = 'status normal';
+            };
+
+            ws.onerror = function(error) {
+                console.error('❌ WebSocket error:', error);
+                updateConnectionStatus(false);
+            };
+        }
+
+        function stopMonitoring() {
+            if (ws) {
+                ws.close(1000, 'User stopped monitoring');
+                ws = null;
+            }
+            
+            updateConnectionStatus(false);
+            console.log('🛑 Monitoring stopped');
+        }
+
+        // Filter functions handled by button onclick events via setFrameFilter()
 
         // Smart video refresh system
         function startVideoAutoRefresh() {
@@ -1024,6 +1427,7 @@
             refreshAnomalies();
             startUptimeCounter();
             startFPSMonitoring();
+            initializeCanvas(); // Initialize canvas for continuous frame display
             
             // DON'T auto-start video stream - wait for user to click "START MONITORING"
             // refreshVideoStream(); // REMOVED
@@ -1060,59 +1464,54 @@
             }, 1000);
         }
 
+        // Legacy function redirects for compatibility
         function connectWebSocket() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                console.log('WebSocket already connected');
-                return;
-            }
-            
-            // Clear current session data when starting new monitoring
-            anomalies = [];
-            pipelineCards = [];
-            frameCount = 0;
-            anomalyCount = 0;
-            updateStats();
-            displayAnomalyFrames();
-            updatePipelineDisplay(); // Clear pipeline cards
-            
-            // NOW start the video stream when user clicks START MONITORING
-            refreshVideoStream();
-            
-            // Update video stream status
-            document.getElementById('videoStreamStatus').textContent = '📹 Connecting to camera...';
-            document.getElementById('videoStreamStatus').style.color = 'var(--cyber-yellow)';
-            
-            ws = new WebSocket('ws://localhost:8000/stream_video?username=dashboard_user');
-            
-            ws.onopen = function(event) {
-                console.log('🔌 WebSocket connected - NEW MONITORING SESSION STARTED');
-                updateConnectionStatus(true);
-                document.getElementById('status').textContent = 'Status: 🔍 ACTIVE MONITORING (New Session)';
-                document.getElementById('status').className = 'status normal';
-                document.getElementById('currentDetails').textContent = '🛡️ Neural networks analyzing video feed for anomalous patterns... (Current session only)';
-                
-                // Start video auto-refresh when monitoring starts
-                startVideoAutoRefresh();
-                
-                // Update video stream status
-                document.getElementById('videoStreamStatus').textContent = '📹 Camera connected - Live feed active';
-                document.getElementById('videoStreamStatus').style.color = 'var(--cyber-green)';
-                
-                // Show video playback section
-                document.getElementById('videoPlaybackSection').style.display = 'block';
-            };
+            startMonitoring();
+        }
 
-            ws.onmessage = function(event) {
+        function disconnectWebSocket() {
+            stopMonitoring();
+        }
+
+        // All WebSocket handlers are now in startMonitoring() function above
+        
+        function handleTier1Detection(data) {
                 try {
                     const data = JSON.parse(event.data);
                     
-                    // 🚨🚨🚨 EXTREME DEBUG LOGGING 🚨🚨🚨
-                    console.log('🔥🔥🔥 WEBSOCKET MESSAGE RECEIVED 🔥🔥🔥');
-                    console.log('📨 Raw event data:', event.data);
-                    console.log('📊 Parsed data:', data);
-                    console.log('🎯 Status check:', data.status);
-                    console.log('🎯 Status type:', typeof data.status);
-                    console.log('🎯 Status === "Suspected Anomaly"?', data.status === 'Suspected Anomaly');
+                    // 🎥 CONTINUOUS FRAME PROCESSING
+                    if (data.type === 'continuous_frame') {
+                        console.log(`� Continuous Frame ${data.frame_id}: ${data.status} - ${data.reasoning}`);
+                        
+                        // Check filter settings
+                        const showAllFrames = document.getElementById('showAllFrames').checked;
+                        const showAnomaliesOnly = document.getElementById('showAnomaliesOnly').checked;
+                        
+                        // Apply filter logic
+                        const shouldDisplayFrame = showAllFrames || (showAnomaliesOnly && data.is_anomaly);
+                        
+                        if (shouldDisplayFrame) {
+                            // Update canvas with current frame
+                            displayFrameOnCanvas(data.frame_data);
+                            
+                            // Update live reasoning display
+                            updateLiveFrameAnalysis(data);
+                            
+                            // Update statistics
+                            updateFrameStats(data);
+                        }
+                        
+                        // If anomaly detected, create pipeline card
+                        if (data.is_anomaly) {
+                            console.log('🚨 Anomaly detected - Creating pipeline card');
+                            createPipelineCard(data);
+                        }
+                        
+                        return;
+                    }
+                    
+                    // Handle other message types (tier2_start, tier2_complete, etc.)
+                    console.log('📨 WebSocket message:', data.type || 'unknown');
                     
                     // Update frame count
                     frameCount++;
@@ -1874,8 +2273,19 @@
             framesDiv.innerHTML = html;
         }
 
+        // Enhanced detailed frame analysis modal
         function showFrameDetails(index) {
-            const anomaly = anomalies[index];
+            // Check if we're dealing with filteredFrames or anomalies
+            const frame = filteredFrames && filteredFrames[index] ? filteredFrames[index] : anomalies[index];
+            if (!frame) return;
+            
+            // If it's from filteredFrames (continuous monitoring), show enhanced modal
+            if (filteredFrames && filteredFrames[index]) {
+                return showDetailedFrameInfo(index);
+            }
+            
+            // Legacy anomaly display for backwards compatibility
+            const anomaly = frame;
             const details = `
 🚨 COMPREHENSIVE ANOMALY ANALYSIS #${index + 1}
 
@@ -1906,6 +2316,98 @@
             `.trim();
             
             alert(details);
+        }
+
+        // Enhanced detailed frame analysis modal for continuous frames
+        function showDetailedFrameInfo(frameIndex) {
+            const frame = filteredFrames[frameIndex];
+            if (!frame) return;
+            
+            const modal = document.getElementById('frameModal');
+            const modalImage = document.getElementById('modalFrameImage');
+            const modalInfo = document.getElementById('modalFrameInfo');
+            
+            // Set frame image
+            modalImage.src = `data:image/jpeg;base64,${frame.frame_data}`;
+            modalImage.style.border = `3px solid ${frame.is_anomaly ? 'var(--cyber-red)' : 'var(--cyber-green)'}`;
+            
+            // Create comprehensive frame analysis
+            let analysisHTML = `
+                <div style="color: ${frame.is_anomaly ? 'var(--cyber-red)' : 'var(--cyber-green)'}; font-size: 1.2rem; font-weight: 600; margin-bottom: 15px;">
+                    ${frame.is_anomaly ? '🚨 ANOMALY DETECTED' : '✅ NORMAL BEHAVIOR'}
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div class="info-section">
+                        <strong style="color: var(--cyber-yellow);">📹 Frame Info</strong><br>
+                        Frame ID: ${frame.frame_id}<br>
+                        Timestamp: ${frame.analysis_time}<br>
+                        Confidence: ${(frame.confidence * 100).toFixed(1)}%<br>
+                        Status: ${frame.status}
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <strong style="color: var(--cyber-yellow); font-size: 1.1rem;">🧠 Complete Analysis Reasoning:</strong>
+                    <div style="background: rgba(0, 20, 40, 0.8); border: 1px solid var(--cyber-blue); border-radius: 8px; padding: 15px; margin-top: 10px; line-height: 1.6; white-space: pre-wrap;">
+                        ${frame.reasoning || 'No detailed reasoning available'}
+                    </div>
+                </div>
+            `;
+            
+            // Add tier1_components analysis if available
+            if (frame.tier1_components) {
+                analysisHTML += `
+                    <div style="margin-bottom: 20px;">
+                        <strong style="color: var(--cyber-yellow); font-size: 1.1rem;">🔬 Tier 1 Component Analysis:</strong>
+                        <div style="background: rgba(0, 40, 20, 0.6); border: 1px solid var(--cyber-green); border-radius: 8px; padding: 15px; margin-top: 10px;">
+                `;
+                
+                if (frame.tier1_components.pose_analysis) {
+                    analysisHTML += `
+                        <div style="margin-bottom: 12px;">
+                            <strong style="color: var(--cyber-green);">🏃 Pose Analysis:</strong><br>
+                            <pre style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">${JSON.stringify(frame.tier1_components.pose_analysis, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+                
+                if (frame.tier1_components.audio_analysis) {
+                    analysisHTML += `
+                        <div style="margin-bottom: 12px;">
+                            <strong style="color: var(--cyber-blue);">🔊 Audio Analysis:</strong><br>
+                            <pre style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">${JSON.stringify(frame.tier1_components.audio_analysis, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+                
+                if (frame.tier1_components.scene_analysis) {
+                    analysisHTML += `
+                        <div style="margin-bottom: 12px;">
+                            <strong style="color: var(--cyber-yellow);">🎬 Scene Analysis:</strong><br>
+                            <pre style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">${JSON.stringify(frame.tier1_components.scene_analysis, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+                
+                analysisHTML += `</div></div>`;
+            }
+            
+            modalInfo.innerHTML = analysisHTML;
+            modal.style.display = 'block';
+        }
+
+        // Modal close functionality
+        function closeModal() {
+            document.getElementById('frameModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('frameModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
         }
 
         function refreshAnomalies() {

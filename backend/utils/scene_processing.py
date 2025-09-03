@@ -47,7 +47,7 @@ SOTA_ABNORMAL_BEHAVIOR_PROMPTS = [
     "person in unusual body position or posture"
 ]
 
-def detect_violence_sota(image, confidence_threshold=0.15):
+def detect_violence_sota(image, confidence_threshold=0.40):
     """SOTA Violence Detection using Security Industry Standards"""
     try:
         # Multi-scale violence detection with ensemble scoring
@@ -87,7 +87,7 @@ def detect_violence_sota(image, confidence_threshold=0.15):
         print(f"Error in violence detection: {e}")
         return False, 0.0, ""
 
-def detect_medical_emergency_sota(image, confidence_threshold=0.12):
+def detect_medical_emergency_sota(image, confidence_threshold=0.25):
     """SOTA Medical Emergency Detection - Healthcare Grade"""
     try:
         all_prompts = SOTA_NORMAL_PROMPTS + SOTA_MEDICAL_EMERGENCY_PROMPTS
@@ -124,7 +124,7 @@ def detect_medical_emergency_sota(image, confidence_threshold=0.12):
         print(f"Error in medical emergency detection: {e}")
         return False, 0.0, ""
 
-def detect_abnormal_behavior_sota(image, confidence_threshold=0.10):
+def detect_abnormal_behavior_sota(image, confidence_threshold=0.30):
     """SOTA Abnormal Behavior Detection - Surveillance Grade"""
     try:
         all_prompts = SOTA_NORMAL_PROMPTS + SOTA_ABNORMAL_BEHAVIOR_PROMPTS

@@ -16,7 +16,7 @@ try:
         print("⚠️ GROQ_API_KEY not found in environment")
         groq_client = None
 except Exception as e:
-    print(f"⚠️ Groq client failed: {e}")
+    print(f"⚠️ Groq client failed to initialize: {e}")
     groq_client = None
 
 
@@ -97,37 +97,43 @@ def tier1_fusion(pose_summary, audio_summary, scene_summary):
         print(f"🚨 TIER1 AUDIO EMERGENCY: {details}")
         return result, details
     
-    # 5. IMPROVED Multi-modal Decision Logic
-    # Dynamic thresholds based on confidence levels
-    if pose_confidence >= 0.8:
-        scene_threshold = 0.05  # High pose confidence = low scene threshold
-    elif pose_confidence >= 0.6:
-        scene_threshold = 0.15  # Medium pose confidence = medium scene threshold  
+    # 5. CALIBRATED Multi-modal Decision Logic for REAL VIOLENCE DETECTION
+    # Higher thresholds for accuracy - only trigger on actual fighting/violence
+    if pose_confidence >= 0.9:
+        scene_threshold = 0.35  # Very high pose confidence = moderate scene threshold
+    elif pose_confidence >= 0.7:
+        scene_threshold = 0.45  # High pose confidence = higher scene threshold  
     else:
-        scene_threshold = 0.3   # Low pose confidence = high scene threshold needed
+        scene_threshold = 0.55  # Low pose confidence = high scene threshold (realistic fighting)
     
-    # SMART FUSION DECISIONS
+    # REAL VIOLENCE DETECTION - Higher confidence required
     if pose_detected and scene_prob > scene_threshold:
-        # Strong agreement between pose and scene
+        # Strong agreement between pose and scene - REAL FIGHTING
         combined_confidence = (pose_confidence + scene_prob) / 2
         result = "Suspected Anomaly"
-        details = f"Multi-modal: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, Combined={combined_confidence:.2f}"
-        print(f"🚨 TIER1 MULTI-MODAL ANOMALY: {details}")
+        details = f"REAL VIOLENCE DETECTED: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, Combined={combined_confidence:.2f}"
+        print(f"🚨 TIER1 REAL VIOLENCE: {details}")
         
-    elif pose_detected and pose_confidence >= 0.85:
-        # Very high pose confidence alone
+    elif pose_detected and pose_confidence >= 0.95:
+        # VERY high pose confidence alone - clear fighting poses
         result = "Suspected Anomaly"
-        details = f"High-confidence pose: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}"
-        print(f"🚨 TIER1 POSE ANOMALY: {details}")
+        details = f"HIGH-CONFIDENCE VIOLENCE: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}"
+        print(f"🚨 TIER1 HIGH-CONFIDENCE VIOLENCE: {details}")
         
-    elif scene_prob >= 0.7:
-        # Very high scene confidence alone
+    elif scene_prob >= 0.75:
+        # Strong scene evidence alone - clear violence in scene
         result = "Suspected Anomaly"
-        details = f"High-confidence scene: Scene={scene_prob:.3f}, Pose={pose_detected}(conf={pose_confidence:.2f})"
-        print(f"🚨 TIER1 SCENE ANOMALY: {details}")
+        details = f"SCENE VIOLENCE: Scene={scene_prob:.3f}(high), Pose={pose_detected}(conf={pose_confidence:.2f})"
+        print(f"🚨 TIER1 SCENE VIOLENCE: {details}")
+
+    elif scene_prob >= 0.50 and not pose_detected:
+        # Moderate scene confidence when pose is weak - but higher threshold
+        result = "Suspected Anomaly"
+        details = f"Scene-based detection: Scene={scene_prob:.3f}(moderate), Pose={pose_detected}(conf={pose_confidence:.2f})"
+        print(f"🚨 TIER1 SCENE MODERATE: {details}")
         
-    elif audio_detected and (pose_detected or scene_prob > 0.2):
-        # Audio with any other support
+    elif audio_detected and (pose_detected or scene_prob > 0.30):
+        # Audio with strong other support (raised threshold from 0.15 to 0.30)
         result = "Suspected Anomaly"
         details = f"Audio + support: Audio={audio_detected}(conf={audio_confidence:.2f}), Pose={pose_detected}, Scene={scene_prob:.3f}"
         print(f"🚨 TIER1 AUDIO SUPPORTED: {details}")

@@ -14,6 +14,7 @@ class DashboardMode:
         self.dashboard_username = "dashboard_user"
         self.current_session_id = None
         self.current_video_file = None
+        self.active_websocket = None  # Track active dashboard WebSocket
         self.session_metadata = {
             'session_anomalies': 0,  # Current session only
             'session_start': None,
@@ -24,6 +25,16 @@ class DashboardMode:
     def is_dashboard_user(self, username: str) -> bool:
         """Check if this is a dashboard user (no login required)"""
         return username in ["dashboard_user", "demo_user", None, ""]
+    
+    def set_active_websocket(self, websocket):
+        """Set the active dashboard WebSocket connection"""
+        self.active_websocket = websocket
+        print(f"📡 Dashboard WebSocket connection registered")
+    
+    def clear_active_websocket(self):
+        """Clear the active dashboard WebSocket connection"""
+        self.active_websocket = None
+        print(f"📡 Dashboard WebSocket connection cleared")
     
     def add_dashboard_anomaly(self, anomaly_data: dict) -> dict:
         """Add anomaly for CURRENT SESSION dashboard display only"""
@@ -83,6 +94,25 @@ class DashboardMode:
             'current_session_id': self.current_session_id,
             'current_video_file': self.current_video_file
         }
+    
+    def get_or_create_dashboard_session(self, session_manager):
+        """Get existing dashboard session or create a new one (SINGLETON approach)"""
+        # Check if we have an active dashboard session
+        if self.current_session_id:
+            active_sessions = session_manager.get_active_sessions()
+            if self.current_session_id in active_sessions:
+                print(f"🔄 Dashboard: Reusing existing session {self.current_session_id}")
+                return self.current_session_id
+        
+        # Create new session if none exists
+        session_id = session_manager.create_session(self.dashboard_username, "dashboard_live")
+        self.current_session_id = session_id
+        
+        # Start monitoring session
+        self.start_new_monitoring_session(session_id, f"dashboard_recording_{int(time.time())}.mp4")
+        
+        print(f"✅ Dashboard: Created new session {session_id}")
+        return session_id
     
     def should_continue_session(self) -> bool:
         """Check if we should continue current session or start new one"""
