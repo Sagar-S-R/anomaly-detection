@@ -1,0 +1,48 @@
+version: '3.8'
+
+# Development Docker Compose - Simplified for local development
+services:
+  # Backend API Service (Development)
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: anomaly-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      - ./backend:/app:delegated
+      - ./backend/anomaly_frames:/app/anomaly_frames
+      - ./backend/uploads:/app/uploads
+    networks:
+      - anomaly-dev-network
+    restart: unless-stopped
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Dashboard Service (Development)
+  dashboard-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: anomaly-dashboard-dev
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONPATH=/app
+      - SERVICE_TYPE=dashboard
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      - ./backend:/app:delegated
+      - ./backend/anomaly_frames:/app/anomaly_frames
+      - ./backend/uploads:/app/uploads
+    networks:
+      - anomaly-dev-network
+    restart: unless-stopped
+    command: ["uvicorn", "dashboard_app:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+networks:
+  anomaly-dev-network:
+    driver: bridge

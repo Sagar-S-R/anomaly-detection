@@ -1,4 +1,10 @@
-# 🚨 Real-Time Anomaly Detection System
+## 🚨 Real-Time Anomaly Detection System
+# Team : QuadFusion
+Team members :
+
+1.Samrudh P : 1ms23cs162@msrit.edu
+2.Sagar S R : 1ms23cs158&msrit.edu
+3.Ranjita V Nayak : 1ms23cs150@msrit.edu
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.112.0-green.svg)](https://fastapi.tiangolo.com)
@@ -385,7 +391,36 @@ chunk_size = 1024           # Audio chunk size
 4. **Push to the branch** (`git push origin feature/amazing-feature`)
 5. **Open a Pull Request**
 
-## 📄 License
+## � Documentation
+
+### **📖 Project Documentation**
+- [**Project Overview**](docs/PROJECT_OVERVIEW.md) - Complete system architecture and user access patterns
+- [**Backend Services**](docs/BACKEND_SERVICES.md) - API (8000) and Dashboard (8001) detailed documentation
+- [**Frontend Application**](docs/FRONTEND_APPLICATION.md) - Web interface, authentication, and user features
+- [**Development Workflow**](docs/DEVELOPMENT_WORKFLOW.md) - Development process and code updates
+
+### **🐳 Docker Documentation**
+- [**Docker Overview**](docs/docker/README.md) - Docker documentation index
+- [**Architecture**](docs/docker/docker-architecture.md) - System architecture and service overview
+- [**Build Process**](docs/docker/docker-build-process.md) - Build process and model pre-loading
+- [**Services**](docs/docker/docker-services.md) - Individual service configurations
+- [**Commands**](docs/docker/docker-commands.md) - Quick command reference
+
+### **🚀 Quick Access**
+```bash
+# View all documentation
+./manage.sh docs
+
+# View Docker documentation  
+./manage.sh docker-docs
+
+# Open specific guides
+./manage.sh guide project-overview
+./manage.sh guide backend-services
+./manage.sh guide frontend-application
+```
+
+## �📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 

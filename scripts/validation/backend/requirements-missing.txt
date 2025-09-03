@@ -1,0 +1,8 @@
+# Missing packages that couldn't be resolved
+# Please review and add manually if needed
+
+# mediapipe  # Could not resolve - check package name
+# openai-whisper  # Could not resolve - check package name
+# opencv-python  # Could not resolve - check package name
+# torch  # Could not resolve - check package name
+# transformers  # Could not resolve - check package name
