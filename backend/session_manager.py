@@ -443,11 +443,12 @@ class SessionManager:
             print(f"🧵 Worker thread created: {thread.name}")
             return thread
     
-    def start_session_workers(self, session_id: str, video_cap, video_writer, fps, audio_stream) -> bool:
+    def start_session_workers(self, session_id: str, video_cap, video_writer, fps, audio_stream, worker_functions=None) -> bool:
         """Start all worker threads for a session - CONSOLIDATED WORKER MANAGEMENT"""
         try:
             session = self.get_session(session_id)
             if not session:
+                print(f"❌ Session {session_id} not found for worker startup")
                 return False
             
             # Store resources in session
@@ -458,13 +459,25 @@ class SessionManager:
                 audio_stream=audio_stream
             )
             
-            # Import worker functions
-            from app import video_capture_worker_session, audio_capture_worker_session, fusion_worker_session
+            # Import worker functions dynamically to avoid circular import
+            if worker_functions is None:
+                try:
+                    import importlib
+                    app_module = importlib.import_module('app')
+                    video_worker = getattr(app_module, 'video_capture_worker_session')
+                    audio_worker = getattr(app_module, 'audio_capture_worker_session') 
+                    fusion_worker = getattr(app_module, 'fusion_worker_session')
+                    print("✅ Worker functions imported dynamically")
+                except Exception as import_error:
+                    print(f"❌ Failed to import worker functions: {import_error}")
+                    return False
+            else:
+                video_worker, audio_worker, fusion_worker = worker_functions
             
             # Create and start video worker
             video_thread = self.create_worker_thread(
                 session_id, 
-                video_capture_worker_session,
+                video_worker,
                 (video_cap, video_writer, fps),
                 "video"
             )
@@ -475,7 +488,7 @@ class SessionManager:
             # Create and start audio worker  
             audio_thread = self.create_worker_thread(
                 session_id,
-                audio_capture_worker_session, 
+                audio_worker, 
                 (self.audio_queue, audio_stream),
                 "audio"
             )
@@ -486,7 +499,7 @@ class SessionManager:
             # Create and start fusion worker
             fusion_thread = self.create_worker_thread(
                 session_id,
-                fusion_worker_session,
+                fusion_worker,
                 (),
                 "fusion"
             )

@@ -1019,7 +1019,13 @@ async def stream_video(websocket: WebSocket):
 
     # CONSOLIDATED WORKER STARTUP - Let SessionManager handle everything
     audio_stream = AudioStream()
-    audio_stream.start()
+    
+    # SAFETY CHECK: Ensure AudioStream was created successfully
+    if audio_stream is None:
+        print("⚠️ Failed to create AudioStream, continuing without audio")
+        audio_stream = None
+    else:
+        audio_stream.start()
     
     # Start all workers using SessionManager - SINGLE CALL
     if not session_manager.start_session_workers(session_id, video_cap, video_writer, fps, audio_stream):
@@ -1363,6 +1369,11 @@ def audio_capture_worker_session(audio_queue, audio_stream, session_stop_event):
     start_time = time.time()
     
     print("🎤 Session audio worker started (CONSOLIDATED)")
+    
+    # SAFETY CHECK: Handle None audio_stream
+    if audio_stream is None:
+        print("⚠️ Audio stream is None, audio worker will exit")
+        return
     
     while not session_stop_event.is_set():
         try:
@@ -1737,16 +1748,28 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
     if "username" in query_params:
         current_username = query_params["username"]
     
+    # CRITICAL FIX: Register WebSocket with session manager for uploaded video processing
+    session_manager.register_websocket(current_username, websocket)
+    print(f"📡 WebSocket registered for user: {current_username} (uploaded video)")
+    
     file_path = os.path.join(VIDEO_UPLOAD_DIR, filename)
     if not os.path.exists(file_path):
-        await websocket.send_json({"error": "Video file not found"})
+        error_msg = f"Video file not found: {file_path}"
+        print(f"❌ {error_msg}")
+        await websocket.send_json({"error": error_msg})
         return
+    
+    print(f"✅ Video file found: {file_path}")
     
     # Use the same processing pipeline as live stream
     video_cap = cv2.VideoCapture(file_path)
     if not video_cap.isOpened():
-        await websocket.send_json({"error": "Could not open video file"})
+        error_msg = f"Could not open video file: {file_path}"
+        print(f"❌ {error_msg}")
+        await websocket.send_json({"error": error_msg})
         return
+    
+    print(f"✅ Video capture opened successfully")
     
     try:
         # CONSOLIDATED: SessionManager handles ALL state initialization
@@ -1757,15 +1780,24 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
         
         # CONSOLIDATED: Use SessionManager's start_session_workers for uploaded video
         upload_session_id = session_manager.create_session(current_username, "uploaded_video")
+        print(f"✅ Created session: {upload_session_id}")
         
         # SessionManager handles ALL worker creation and management
-        workers_started = session_manager.start_session_workers(
-            upload_session_id, 
-            video_cap=video_cap,
-            video_writer=None,  # No recording for uploaded videos
-            fps=30,  # Default FPS 
-            audio_stream=None  # No audio for uploaded videos
-        )
+        try:
+            workers_started = session_manager.start_session_workers(
+                upload_session_id, 
+                video_cap=video_cap,
+                video_writer=None,  # No recording for uploaded videos
+                fps=30,  # Default FPS 
+                audio_stream=None  # No audio for uploaded videos
+            )
+            print(f"✅ Worker startup result: {workers_started}")
+        except Exception as worker_error:
+            error_msg = f"Worker startup failed: {worker_error}"
+            print(f"❌ {error_msg}")
+            video_cap.release()
+            await websocket.send_json({"error": error_msg})
+            return
         
         if not workers_started:
             video_cap.release()
@@ -1780,7 +1812,7 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
         while True:
             try:
                 # Get fused result from SessionManager fusion queue - CONSOLIDATED
-                fused_result = session_manager.fusion_results_queue.get(timeout=0.5)
+                fused_result = session_manager.fusion_results_queue.get(timeout=0.2)  # Reduced from 0.5 to 0.2
             except queue.Empty:
                 # Check if video processing is complete via SessionManager
                 session = session_manager.get_session(upload_session_id)
@@ -1807,12 +1839,42 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
                 print("⚠️ Uploaded video Tier1 returned None, using fallback")
                 tier1_result = {
                     "status": "Normal",
-                    "details": "Monitoring...",
-                    "fusion_status": fusion_status
+                    "details": "Processing fallback - tier1 returned None",
+                    "fusion_status": fusion_status,
+                    "frame_id": frame_id,
+                    "timestamp": timestamp,
+                    "tier1_components": {
+                        "pose_analysis": {
+                            "anomaly_detected": False, 
+                            "summary": "Error - tier1 returned None",
+                            "raw_score": 0
+                        },
+                        "audio_analysis": {
+                            "transcripts": [], 
+                            "available": False, 
+                            "summary": "Error - tier1 returned None",
+                            "transcript_text": ""
+                        },
+                        "scene_analysis": {
+                            "anomaly_probability": 0.0, 
+                            "summary": "Error - tier1 returned None"
+                        },
+                        "fusion_logic": {
+                            "initial_status": "Normal", 
+                            "final_status": "Normal",
+                            "smoothing_applied": False,
+                            "details": "Fallback - tier1 processing failed"
+                        }
+                    }
                 }
             
             status = tier1_result.get("status", "Normal")
             details = tier1_result.get("details", "Monitoring...")
+            
+            # Ensure tier1_result has required fields for frontend (uploaded video)
+            tier1_result["frame_id"] = tier1_result.get("frame_id", frame_id)
+            tier1_result["timestamp"] = tier1_result.get("timestamp", timestamp)
+            tier1_result["fusion_status"] = tier1_result.get("fusion_status", fusion_status)
             
             if status == "Suspected Anomaly":
                 # CONSOLIDATED: Use SessionManager for anomaly cooldown tracking (uploaded video)
@@ -1924,7 +1986,24 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
             # Send result via WebSocket
             try:
                 if websocket.client_state.name == "CONNECTED":
+                    # 🚨 DEBUG: Log uploaded video WebSocket sends
+                    print(f"🔥 UPLOADED VIDEO SENDING WEBSOCKET MESSAGE:")
+                    print(f"📨 Status: {tier1_result.get('status')}")
+                    print(f"📨 Details: {tier1_result.get('details')}")
+                    print(f"📨 Frame ID: {tier1_result.get('frame_id')}")
+                    print(f"📨 Message size: {len(str(tier1_result))} chars")
+                    
                     await websocket.send_json(tier1_result)
+                    print(f"✅ UPLOADED VIDEO WEBSOCKET MESSAGE SENT!")
+                    
+                    # Log all messages
+                    if tier1_result.get("status") == "Suspected Anomaly":
+                        print(f"🚨 UPLOADED VIDEO ANOMALY SENT: {tier1_result.get('status')} - {tier1_result.get('details', '')}")
+                    else:
+                        print(f"ℹ️ Uploaded video normal sent: {tier1_result.get('status')}")
+                else:
+                    print("WebSocket not connected, stopping uploaded video processing")
+                    break
             except WebSocketDisconnect:
                 print("WebSocket disconnected during video processing")
                 break
@@ -1946,6 +2025,11 @@ async def process_uploaded_video(websocket: WebSocket, filename: str):
         # CONSOLIDATED CLEANUP - SessionManager handles everything
         print(f"🧹 CONSOLIDATED cleanup for upload session: {upload_session_id}")
         session_manager.cleanup_session(upload_session_id)
+        
+        # CRITICAL FIX: Unregister WebSocket connection
+        session_manager.unregister_websocket(current_username)
+        print(f"📡 WebSocket unregistered for user: {current_username}")
+        
         print("✅ Upload session cleanup complete")
         
         # Destroy OpenCV windows
@@ -1976,6 +2060,10 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
     query_params = websocket.query_params
     if "username" in query_params:
         current_username = query_params["username"]
+    
+    # CRITICAL FIX: Register WebSocket with session manager for CCTV processing
+    session_manager.register_websocket(current_username, websocket)
+    print(f"📡 WebSocket registered for user: {current_username} (CCTV)")
     
     # Construct RTSP URL
     if username and password:
@@ -2188,6 +2276,11 @@ async def connect_cctv(websocket: WebSocket, ip: str, port: int = 554, username:
         # CONSOLIDATED CLEANUP - SessionManager handles everything
         print(f"🧹 CONSOLIDATED cleanup for CCTV session: {cctv_session_id}")
         session_manager.cleanup_session(cctv_session_id)
+        
+        # CRITICAL FIX: Unregister WebSocket connection
+        session_manager.unregister_websocket(current_username)
+        print(f"📡 WebSocket unregistered for user: {current_username}")
+        
         print("✅ CCTV session cleanup complete")
         print("🔄 Stop signal reset for next session")
         

@@ -445,7 +445,7 @@ function App() {
               if (!exists) {
                 const newAnomaly = {
                   ...data,
-                  id: data.id || Date.now(),
+                  id: data.id || `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                   timestamp: data.timestamp || Date.now() / 1000,
                   tier2_analysis: null,
                   source: 'websocket_legacy',
