@@ -336,10 +336,33 @@
         }
 
         .pipeline-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-            gap: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
             margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .pipeline-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .pipeline-grid::-webkit-scrollbar-track {
+            background: var(--cyber-darker);
+            border-radius: 4px;
+        }
+
+        .pipeline-grid::-webkit-scrollbar-thumb {
+            background: var(--cyber-primary);
+            border-radius: 4px;
+        }
+
+        .pipeline-grid::-webkit-scrollbar-thumb:hover {
+            background: var(--cyber-blue);
         }
 
         .pipeline-card {
@@ -347,10 +370,22 @@
             border-radius: 15px;
             padding: 20px;
             background: linear-gradient(135deg, rgba(26, 26, 26, 0.6), transparent);
-            position: relative;
             transition: all 0.3s ease;
-            aspect-ratio: 2/1; /* 1:2 ratio (height:width) */
-            min-height: 300px;
+            min-height: 280px;
+            max-height: 400px;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            z-index: 2;
+            isolation: isolate;
+        }
+
+        .pipeline-card + .pipeline-card {
+            margin-top: 10px;
         }
 
         .pipeline-card:hover {
@@ -412,43 +447,59 @@
         }
 
         .tier1-section {
-            margin-bottom: 20px;
-            padding: 15px;
+            margin-bottom: 15px;
+            padding: 12px;
             background: rgba(26, 26, 26, 0.5);
-            border-radius: 10px;
+            border-radius: 8px;
             border-left: 4px solid var(--cyber-yellow);
         }
 
         .tier1-title {
-            font-size: 1rem;
+            font-size: 0.9rem;
             font-weight: 600;
             color: var(--cyber-yellow);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         .detection-scores {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin: 10px 0;
+            gap: 8px;
+            margin: 8px 0;
         }
 
         .score-item {
             text-align: center;
-            padding: 8px;
+            padding: 6px;
             background: rgba(26, 26, 26, 0.7);
-            border-radius: 6px;
+            border-radius: 4px;
             border: 1px solid rgba(0, 255, 255, 0.2);
         }
 
         .score-label {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: var(--cyber-blue);
             text-transform: uppercase;
-            margin-bottom: 3px;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .score-value {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--cyber-primary);
+        }
+
+        .tier1-details {
+            font-size: 0.75rem;
+            color: var(--cyber-light-gray);
+            margin-top: 8px;
+            line-height: 1.3;
+            max-height: 60px;
+            overflow-y: auto;
         }
 
         .score-value {
@@ -459,24 +510,31 @@
 
         .tier2-section {
             border-top: 1px solid rgba(0, 255, 255, 0.2);
-            padding-top: 15px;
-            min-height: 100px;
+            padding-top: 12px;
+            min-height: 80px;
+            flex-shrink: 0;
+            margin-top: auto;
+            overflow: hidden;
         }
 
         .tier2-status-btn {
             background: linear-gradient(135deg, rgba(0, 136, 255, 0.2), transparent);
             color: var(--cyber-blue);
             border: 2px solid var(--cyber-blue);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             cursor: pointer;
             transition: all 0.3s ease;
             width: 100%;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .tier2-status-btn.processing {
@@ -501,26 +559,45 @@
         }
 
         .tier2-results {
-            font-size: 0.85rem;
-            line-height: 1.4;
+            font-size: 0.8rem;
+            line-height: 1.3;
+            max-height: 150px;
+            overflow-y: auto;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            padding-right: 5px;
+        }
+
+        .tier2-results::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .tier2-results::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .tier2-results::-webkit-scrollbar-thumb {
+            background: var(--cyber-primary);
+            border-radius: 2px;
         }
 
         .threat-assessment {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin: 10px 0;
-            padding: 10px;
+            margin: 8px 0;
+            padding: 8px;
             background: rgba(26, 26, 26, 0.7);
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .threat-level-display {
-            font-size: 1.2rem;
+            font-size: 1rem;
             font-weight: 700;
-            padding: 5px 15px;
-            border-radius: 15px;
+            padding: 4px 12px;
+            border-radius: 12px;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .threat-high { 
@@ -803,6 +880,9 @@
                     <button class="cyber-btn info-btn" onclick="clearSession()">
                         🧹 CLEAR SESSION
                     </button>
+                    <button class="cyber-btn start-btn" onclick="testJavaScript()" style="margin-top: 10px; background: rgba(255, 165, 0, 0.2); border-color: orange;">
+                        🧪 TEST JAVASCRIPT
+                    </button>
                     
                     <!-- Frame Filter Section -->
                     <div style="margin-top: 20px; padding: 15px; border: 2px solid var(--cyber-green); border-radius: 10px; background: rgba(0, 255, 136, 0.05);">
@@ -911,7 +991,30 @@
         </div>
     </div>
 
+    <!-- 🔍 FULL ANALYSIS MODAL -->
+    <div id="analysisModal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.9); backdrop-filter: blur(5px);">
+        <div style="position: relative; margin: 2% auto; padding: 20px; width: 90%; max-width: 1200px; background: linear-gradient(135deg, var(--cyber-darker) 0%, var(--cyber-dark) 100%); border: 2px solid var(--cyber-primary); border-radius: 15px; box-shadow: 0 0 50px rgba(0, 255, 255, 0.5); max-height: 90vh; overflow-y: auto;">
+            <!-- Close Button -->
+            <span onclick="closeAnalysisModal()" style="position: absolute; top: 15px; right: 25px; color: var(--cyber-red); font-size: 2rem; font-weight: bold; cursor: pointer; z-index: 10001;">&times;</span>
+            
+            <!-- Modal Content -->
+            <div id="modalAnalysisContent" style="color: var(--cyber-primary); line-height: 1.6;">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
     <script>
+        // 🚨 DEBUG: Test if JavaScript is working
+        console.log('🚀 Dashboard JavaScript loaded successfully!');
+        
+        // 🧪 Test function for debugging
+        function testJavaScript() {
+            console.log('✅ JavaScript test function called!');
+            alert('🎉 JavaScript is working! Buttons should work now.');
+            return true;
+        }
+        
         let ws = null;
         let anomalies = [];
         let pipelineCards = []; // Track active pipeline cards
@@ -1273,6 +1376,9 @@
 
         // START/STOP MONITORING FUNCTIONS
         function startMonitoring() {
+            console.log('🚀 startMonitoring() function called!');
+            alert('🎯 startMonitoring function called - this proves buttons are working!');
+            
             if (ws && ws.readyState === WebSocket.OPEN) {
                 console.log('WebSocket already connected');
                 return;
@@ -1282,6 +1388,8 @@
             
             // Clear previous data
             anomalies = [];
+            frameCount = 0;
+            anomalyCount = 0;
             frameStats = { totalFrames: 0, anomalyFrames: 0, normalFrames: 0 };
             updateStats();
             displayAnomalyFrames();
@@ -1300,14 +1408,20 @@
             ws.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
-                    console.log('📨 WebSocket message:', data.type);
+                    console.log('📨 WebSocket message received:', data.type, 'Frame ID:', data.frame_id);
                     
                     // Handle continuous frame data
                     if (data.type === 'continuous_frame') {
+                        // Increment frame count for each processed frame
+                        frameCount++;
+                        document.getElementById('frameCount').textContent = frameCount;
+                        
                         displayContinuousFrame(data);
                         
-                        // If anomaly, add to anomaly list
+                        // 🚨 IMPORTANT: If continuous frame is an anomaly, add to anomaly list
                         if (data.is_anomaly) {
+                            console.log('🚨 Continuous frame anomaly detected:', data.frame_id);
+                            
                             const anomalyData = {
                                 frame_id: data.frame_id,
                                 timestamp: data.timestamp,
@@ -1315,18 +1429,42 @@
                                 confidence: data.confidence,
                                 detected_objects: data.detected_objects,
                                 analysis_time: data.analysis_time,
-                                frame_data: data.frame_data
+                                frame_data: data.frame_data,
+                                status: data.status,
+                                is_anomaly: true,
+                                current_session: true,
+                                detected_at: new Date().toISOString(),
+                                threat_level: 0.6, // Default for tier1 detection
+                                visual_score: data.confidence || 0.5,
+                                audio_score: 0.5,
+                                reasoning_summary: 'Tier 1 detection - awaiting Tier 2 analysis...'
                             };
                             
                             anomalies.unshift(anomalyData);
                             anomalies = anomalies.slice(0, 20); // Keep last 20
                             displayAnomalyFrames();
+                            updateStats(); // Update stats for anomaly
+                            
+                            console.log('✅ Added continuous frame anomaly to anomalies list');
                         }
                     }
                     
                     // Handle other message types
                     if (data.type === 'tier1_detection') {
+                        console.log('🎯 Processing tier1_detection message');
                         handleTier1Detection(data);
+                    }
+                    
+                    // Handle Tier 2 analysis results
+                    if (data.type === 'tier2_results') {
+                        console.log('🎯 Processing tier2_results message');
+                        handleTier2Results(data);
+                    }
+                    
+                    // Handle Tier 2 analysis start
+                    if (data.type === 'tier2_start') {
+                        console.log('🎯 Processing tier2_start message');
+                        handleTier2Start(data);
                     }
                     
                 } catch (error) {
@@ -1348,6 +1486,9 @@
         }
 
         function stopMonitoring() {
+            console.log('🛑 stopMonitoring() function called!');
+            alert('🛑 stopMonitoring function called!');
+            
             if (ws) {
                 ws.close(1000, 'User stopped monitoring');
                 ws = null;
@@ -1423,6 +1564,8 @@
             }, 1000);
         }
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 DOM Content Loaded - Dashboard initializing...');
+            
             updateConnectionStatus(false);
             refreshAnomalies();
             startUptimeCounter();
@@ -1474,148 +1617,6 @@
         }
 
         // All WebSocket handlers are now in startMonitoring() function above
-        
-        function handleTier1Detection(data) {
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    // 🎥 CONTINUOUS FRAME PROCESSING
-                    if (data.type === 'continuous_frame') {
-                        console.log(`� Continuous Frame ${data.frame_id}: ${data.status} - ${data.reasoning}`);
-                        
-                        // Check filter settings
-                        const showAllFrames = document.getElementById('showAllFrames').checked;
-                        const showAnomaliesOnly = document.getElementById('showAnomaliesOnly').checked;
-                        
-                        // Apply filter logic
-                        const shouldDisplayFrame = showAllFrames || (showAnomaliesOnly && data.is_anomaly);
-                        
-                        if (shouldDisplayFrame) {
-                            // Update canvas with current frame
-                            displayFrameOnCanvas(data.frame_data);
-                            
-                            // Update live reasoning display
-                            updateLiveFrameAnalysis(data);
-                            
-                            // Update statistics
-                            updateFrameStats(data);
-                        }
-                        
-                        // If anomaly detected, create pipeline card
-                        if (data.is_anomaly) {
-                            console.log('🚨 Anomaly detected - Creating pipeline card');
-                            createPipelineCard(data);
-                        }
-                        
-                        return;
-                    }
-                    
-                    // Handle other message types (tier2_start, tier2_complete, etc.)
-                    console.log('📨 WebSocket message:', data.type || 'unknown');
-                    
-                    // Update frame count
-                    frameCount++;
-                    
-                    // Display JSON output
-                    document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
-                    
-                    // 🎯 PIPELINE CARD CREATION: Check for MULTIPLE anomaly indicators
-                    const isAnomalyMessage = (
-                        data.status === 'Suspected Anomaly' ||
-                        data.type === 'new_anomaly' ||
-                        (data.details && data.details.toLowerCase().includes('anomaly')) ||
-                        (data.tier1_components && 
-                         (data.tier1_components.scene_analysis?.anomaly_probability > 0.7 ||
-                          data.tier1_components.pose_analysis?.anomaly_detected === true))
-                    );
-                    
-                    if (isAnomalyMessage) {
-                        console.log('🚨🚨🚨 ANOMALY DETECTED - CREATING PIPELINE CARD NOW! 🚨🚨🚨');
-                        console.log('📋 Anomaly detection reason:', {
-                            status: data.status,
-                            type: data.type,
-                            details: data.details,
-                            scene_prob: data.tier1_components?.scene_analysis?.anomaly_probability,
-                            pose_detected: data.tier1_components?.pose_analysis?.anomaly_detected
-                        });
-                        console.log('📋 Full data for card creation:', JSON.stringify(data, null, 2));
-                        
-                        // FORCE CREATE PIPELINE CARD
-                        createPipelineCard(data);
-                        console.log('✅✅✅ PIPELINE CARD CREATION FORCED! ✅✅✅');
-                    } else {
-                        console.log(`ℹ️ Status is "${data.status}" - not creating pipeline card`);
-                        console.log('🔍 Anomaly check details:', {
-                            status: data.status,
-                            type: data.type,
-                            hasDetails: !!data.details,
-                            hasComponents: !!data.tier1_components
-                        });
-                    }
-                    
-                    if (data.error) {
-                        document.getElementById('currentDetails').textContent = '⚠️ ERROR: ' + data.error;
-                        console.error('WebSocket error:', data.error);
-                        return;
-                    }
-
-                    // Update video file reference
-                    if (data.video_file) {
-                        currentVideoFile = data.video_file;
-                    }
-
-                    // Handle different message types
-                    if (data.type === 'tier2_analysis') {
-                        // Handle Tier 2 analysis results
-                        console.log('🔬 Handling Tier 2 Results:', data);
-                        handleTier2Results(data);
-                    } else if (data.type === 'tier2_start') {
-                        // Handle Tier 2 start notification
-                        console.log('🔬 Handling Tier 2 Start:', data);
-                        handleTier2Start(data);
-                    } else if (data.status === 'Suspected Anomaly') {
-                        // Handle Tier 1 anomaly detection
-                        console.log('🚨 Handling Tier 1 Detection:', data);
-                        handleTier1Detection(data);
-                    } else {
-                        // Handle normal status
-                        console.log('✅ Handling Normal Status:', data);
-                        handleNormalStatus(data);
-                    }
-
-                    updateStats();
-
-                } catch (error) {
-                    console.error('Error parsing WebSocket data:', error);
-                }
-            };
-
-            ws.onclose = function(event) {
-                console.log('WebSocket closed:', event.code, event.reason);
-                updateConnectionStatus(false);
-                document.getElementById('status').textContent = 'Status: 🔌 DISCONNECTED';
-                document.getElementById('status').className = 'status normal';
-                document.getElementById('liveFeed').className = 'live-feed';
-                
-                // Reset video stream border
-                const liveStream = document.getElementById('liveVideoStream');
-                liveStream.className = '';
-                
-                if (event.code !== 1000 && event.code !== 1001) {
-                    setTimeout(() => {
-                        console.log('Attempting to reconnect...');
-                        connectWebSocket();
-                    }, 3000);
-                }
-            };
-
-            ws.onerror = function(error) {
-                console.error('WebSocket error:', error);
-                document.getElementById('currentDetails').textContent = '🚨 CONNECTION ERROR: Check if backend is running';
-                document.getElementById('status').textContent = 'Status: ❌ CONNECTION FAILED';
-                updateConnectionStatus(false);
-            };
-        }
 
         function handleTier1Detection(data) {
             console.log('🚨 TIER 1 ANOMALY DETECTED:', data);
@@ -1684,12 +1685,15 @@
         function handleTier2Results(data) {
             console.log('✅ TIER 2 ANALYSIS COMPLETE:', data);
             console.log('📊 Tier 2 data received:', JSON.stringify(data, null, 2));
+            console.log('🔍 Current pipeline cards count:', pipelineCards.length);
+            console.log('🔍 Pipeline cards waiting for tier2:', pipelineCards.filter(c => !c.tier2Data).length);
             
             // SIMPLE APPROACH: Update the MOST RECENT pipeline card that doesn't have Tier 2 data yet
             const cardToUpdate = pipelineCards.find(card => !card.tier2Data);
             
             if (cardToUpdate) {
                 console.log('🎯 Updating card:', cardToUpdate.id);
+                console.log('🎯 Card frameId:', cardToUpdate.frameId, 'Tier2 frameId:', data.frame_id);
                 
                 // Update the card data
                 cardToUpdate.tier2Data = data;
@@ -1698,6 +1702,9 @@
                 const cardElement = document.getElementById(cardToUpdate.id);
                 if (cardElement) {
                     console.log('✅ Found card element, updating HTML');
+                    
+                    // Change card styling to indicate completion
+                    cardElement.className = cardElement.className.replace('tier2-processing', 'tier2-complete');
                     
                     // Find the tier2-section and update it
                     const tier2Section = cardElement.querySelector('.tier2-section');
@@ -1729,15 +1736,87 @@
                         `;
                         
                         console.log('🎉 TIER 2 RESULTS SUCCESSFULLY UPDATED IN PIPELINE CARD!');
+                        console.log('🎉 Updated HTML content:', tier2Section.innerHTML);
                     } else {
                         console.error('❌ Could not find tier2-section in card');
+                        console.log('🔍 Card HTML:', cardElement.innerHTML);
                     }
                 } else {
                     console.error('❌ Could not find card element with ID:', cardToUpdate.id);
+                    console.log('🔍 Available card IDs:', Array.from(document.querySelectorAll('.pipeline-card')).map(el => el.id));
                 }
             } else {
                 console.error('❌ No pipeline cards available for Tier 2 update');
-                console.log('📋 Current pipeline cards:', pipelineCards.map(c => ({id: c.id, hasTier2: !!c.tier2Data})));
+                console.log('📋 Current pipeline cards:', pipelineCards.map(c => ({id: c.id, frameId: c.frameId, hasTier2: !!c.tier2Data})));
+                
+                // FALLBACK: Show a notification that Tier 2 analysis completed
+                console.log('🔔 Creating fallback notification for Tier 2 completion');
+                
+                const notificationArea = document.getElementById('currentDetails');
+                if (notificationArea) {
+                    const threatLevel = getThreatLevel(data.threat_severity_index);
+                    notificationArea.innerHTML = `
+                        🎉 <strong>TIER 2 ANALYSIS COMPLETE</strong><br>
+                        🎯 Threat Level: <span style="color: ${threatLevel === 'HIGH' ? '#ff0000' : threatLevel === 'MEDIUM' ? '#ffff00' : '#00ff00'};">${threatLevel}</span><br>
+                        🤖 ${data.reasoning_summary || 'Analysis complete'}<br>
+                        📊 Visual: ${((data.visual_score || 0.5) * 100).toFixed(0)}% | Audio: ${((data.audio_score || 0.5) * 100).toFixed(0)}%
+                    `;
+                }
+                
+                // Also try to create a new pipeline card for this tier 2 result
+                const fallbackCardData = {
+                    frame_id: data.frame_id,
+                    timestamp: data.timestamp,
+                    details: data.reasoning_summary || 'Tier 2 analysis completed',
+                    tier1_components: {
+                        pose_analysis: { detected: false, confidence: 0.5 },
+                        audio_analysis: { detected: false, confidence: 0.2 },
+                        scene_analysis: { anomaly_probability: data.visual_score || 0.5 }
+                    }
+                };
+                
+                console.log('🎨 Creating fallback pipeline card with Tier 2 data');
+                createPipelineCard(fallbackCardData);
+                
+                // Find the just-created card and update it with tier2 data
+                setTimeout(() => {
+                    const newCard = pipelineCards.find(card => !card.tier2Data);
+                    if (newCard) {
+                        newCard.tier2Data = data;
+                        const cardElement = document.getElementById(newCard.id);
+                        if (cardElement) {
+                            const tier2Section = cardElement.querySelector('.tier2-section');
+                            if (tier2Section) {
+                                const threatLevel = getThreatLevel(data.threat_severity_index);
+                                tier2Section.innerHTML = `
+                                    <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px;">
+                                        ✅ TIER 2 AI ANALYSIS COMPLETE
+                                    </div>
+                                    <div style="background: rgba(0, 255, 0, 0.1); padding: 10px; border-radius: 5px; margin-bottom: 8px;">
+                                        <div style="color: #00ffff; font-weight: bold;">🎯 Threat Level: 
+                                            <span style="color: ${threatLevel === 'HIGH' ? '#ff0000' : threatLevel === 'MEDIUM' ? '#ffff00' : '#00ff00'};">
+                                                ${threatLevel}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div style="background: rgba(26, 26, 26, 0.7); padding: 10px; border-radius: 5px; margin-bottom: 8px;">
+                                        <div style="color: #ff6b6b; font-weight: bold;">🤖 AI Analysis:</div>
+                                        <div style="color: rgba(0, 255, 255, 0.9); font-size: 0.85rem; margin-top: 5px;">
+                                            ${data.reasoning_summary || 'Analysis complete'}
+                                        </div>
+                                    </div>
+                                    <div style="color: #ffff00; font-size: 0.8rem;">
+                                        📊 Scores: Visual ${((data.visual_score || 0.5) * 100).toFixed(0)}% | 
+                                        Audio ${((data.audio_score || 0.5) * 100).toFixed(0)}% | 
+                                        Multimodal ${((data.multimodal_agreement || 0.5) * 100).toFixed(0)}%
+                                    </div>
+                                `;
+                                cardElement.className = cardElement.className.replace('tier2-processing', 'tier2-complete');
+                                console.log('✅ Fallback pipeline card updated with Tier 2 data');
+                            }
+                        }
+                    }
+                }, 100);
             }
             
             // Also update corresponding anomaly in the frames section (existing code)
@@ -1747,10 +1826,21 @@
             );
             
             if (anomalyIndex !== -1) {
+                console.log(`🔄 Updating anomaly #${anomalyIndex} with Tier 2 data`);
                 anomalies[anomalyIndex].tier2_analysis = data;
                 anomalies[anomalyIndex].threat_level = data.threat_severity_index || 0.5;
                 anomalies[anomalyIndex].reasoning_summary = data.reasoning_summary || 'Analysis complete';
+                anomalies[anomalyIndex].threat_severity_index = data.threat_severity_index || 0.5;
+                anomalies[anomalyIndex].visual_score = data.visual_score || 0.5;
+                anomalies[anomalyIndex].audio_score = data.audio_score || 0.5;
+                anomalies[anomalyIndex].multimodal_agreement = data.multimodal_agreement || 0.5;
+                anomalies[anomalyIndex].detailed_analysis = data.detailed_analysis || '';
+                
                 displayAnomalyFrames();
+                console.log('✅ Anomaly updated with Tier 2 analysis');
+            } else {
+                console.warn(`⚠️ No matching anomaly found for Tier 2 data (frame_id: ${data.frame_id})`);
+                console.log('🔍 Available anomalies:', anomalies.map(a => ({frame_id: a.frame_id, timestamp: a.timestamp})));
             }
         }
 
@@ -2147,6 +2237,9 @@
         }
 
         function clearSession() {
+            console.log('🧹 clearSession() function called!');
+            alert('🧹 clearSession function called!');
+            
             try {
                 console.log('🧹 Clearing monitoring session...');
                 
@@ -2185,6 +2278,73 @@
             } catch (error) {
                 console.error('❌ Error clearing session:', error);
                 alert('❌ Error clearing session. Please check console for details.');
+            }
+        }
+
+        // 🧪 TEST FUNCTION: Create a sample pipeline card to test functionality
+        function testPipelineCard() {
+            console.log('🧪 Creating test pipeline card...');
+            
+            // Create test Tier 1 data similar to real data structure
+            const testTier1Data = {
+                "status": "Suspected Anomaly",
+                "details": "Test: Pose=True(conf=0.85), Scene=0.72(need>0.30), Audio=True [TEST MODE]",
+                "tier1_components": {
+                    "pose_analysis": {
+                        "anomaly_detected": true,
+                        "summary": "Test pose anomaly detected: True",
+                        "raw_score": 0.85
+                    },
+                    "audio_analysis": {
+                        "transcripts": ["Help me please!"],
+                        "available": true,
+                        "summary": "Test audio: Emergency keywords detected",
+                        "transcript_text": "Help me please!"
+                    },
+                    "scene_analysis": {
+                        "anomaly_probability": 0.72,
+                        "summary": "Test scene anomaly probability: 0.72"
+                    },
+                    "fusion_logic": {
+                        "initial_status": "Normal",
+                        "final_status": "Suspected Anomaly",
+                        "smoothing_applied": false,
+                        "details": "Test: Pose=True(conf=0.85), Scene=0.72(need>0.30), Audio=True [TEST MODE]"
+                    }
+                },
+                "frame_id": 9999,
+                "fusion_status": "multimodal",
+                "timestamp": Date.now() / 1000,
+                "video_file": "test_session.mp4"
+            };
+            
+            // Create the pipeline card
+            try {
+                createPipelineCard(testTier1Data);
+                
+                // Simulate Tier 2 results after 3 seconds
+                setTimeout(() => {
+                    const testTier2Data = {
+                        "frame_id": 9999,
+                        "timestamp": Date.now() / 1000,
+                        "threat_severity_index": 0.85,
+                        "reasoning_summary": "TEST AI ANALYSIS: High threat detected - emergency keywords in audio combined with suspicious pose movements indicate potential distress situation requiring immediate attention.",
+                        "visual_score": 0.78,
+                        "audio_score": 0.92,
+                        "multimodal_agreement": 0.85,
+                        "detailed_analysis": "Comprehensive test analysis:\n- Visual indicators show abnormal posture\n- Audio contains clear distress signals\n- Multimodal correlation confirms high threat\n- Recommended action: Immediate response",
+                        "analysis_time": new Date().toLocaleTimeString()
+                    };
+                    
+                    console.log('🧪 Simulating Tier 2 results...');
+                    handleTier2Results(testTier2Data);
+                }, 3000);
+                
+                alert('🧪 Test pipeline card created! Watch the pipeline section - Tier 2 results will appear in 3 seconds.');
+                
+            } catch (error) {
+                console.error('❌ Error creating test pipeline card:', error);
+                alert('❌ Error creating test pipeline card. Check console for details.');
             }
         }
 
@@ -2275,47 +2435,175 @@
 
         // Enhanced detailed frame analysis modal
         function showFrameDetails(index) {
-            // Check if we're dealing with filteredFrames or anomalies
-            const frame = filteredFrames && filteredFrames[index] ? filteredFrames[index] : anomalies[index];
-            if (!frame) return;
+            console.log('🔍 showFrameDetails called for index:', index);
             
-            // If it's from filteredFrames (continuous monitoring), show enhanced modal
-            if (filteredFrames && filteredFrames[index]) {
-                return showDetailedFrameInfo(index);
+            // Get the anomaly data
+            const anomaly = anomalies[index];
+            if (!anomaly) {
+                console.error('❌ No anomaly found at index:', index);
+                alert('❌ No anomaly data found');
+                return;
             }
             
-            // Legacy anomaly display for backwards compatibility
-            const anomaly = frame;
-            const details = `
-🚨 COMPREHENSIVE ANOMALY ANALYSIS #${index + 1}
-
-🎞️ FRAME INFORMATION:
-   • Frame Number: ${anomaly.frame_count || 'Unknown'}
-   • Timestamp: ${anomaly.timestamp ? anomaly.timestamp.toFixed(2) + 's' : 'Unknown'}
-   • Detection Time: ${anomaly.detected_at ? new Date(anomaly.detected_at).toLocaleString() : 'Unknown'}
-
-📊 THREAT ASSESSMENT BREAKDOWN:
-   • Overall Threat Level: ${((anomaly.threat_severity_index || anomaly.threat_level || 0.5) * 100).toFixed(0)}%
-   • Visual Analysis Score: ${((anomaly.visual_score || 0.5) * 100).toFixed(0)}%
-   • Audio Analysis Score: ${((anomaly.audio_score || 0.5) * 100).toFixed(0)}%
-   • Multimodal Agreement: ${((anomaly.multimodal_agreement || 0.5) * 100).toFixed(0)}%
-   • Text Alignment Score: ${((anomaly.text_alignment_score || 0.5) * 100).toFixed(0)}%
-
-📁 FILE REFERENCES:
-   • Video Recording: ${anomaly.video_file || 'Not available'}
-   • Anomaly Frame: ${anomaly.frame_file || 'Not available'}
-
-📝 DETECTION ANALYSIS:
-   • Tier 1 Detection: ${anomaly.details || 'No details available'}
-   • AI Reasoning: ${anomaly.reasoning_summary || 'No AI analysis performed'}
-
-🔧 TECHNICAL DATA:
-   • Session ID: ${anomaly.session_id || 'Unknown'}
-   • Processing Pipeline: ${anomaly.pipeline || 'Standard'}
-   • Model Version: Mixtral-8x7B (Enhanced)
-            `.trim();
+            console.log('📊 Anomaly data:', anomaly);
             
-            alert(details);
+            // Create comprehensive analysis content
+            let modalContent = `
+                <h2 style="color: var(--cyber-primary); text-align: center; margin-bottom: 25px; font-size: 1.8rem;">
+                    🔍 COMPREHENSIVE ANOMALY ANALYSIS #${index + 1}
+                </h2>
+                
+                <!-- OVERVIEW SECTION -->
+                <div style="background: rgba(255, 0, 68, 0.15); border: 2px solid var(--cyber-red); border-radius: 10px; padding: 20px; margin-bottom: 25px;">
+                    <h3 style="color: var(--cyber-red); margin-bottom: 15px;">🚨 THREAT OVERVIEW</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <strong style="color: var(--cyber-yellow);">🎯 Threat Level:</strong><br>
+                            <span style="color: var(--cyber-red); font-size: 1.3rem; font-weight: bold;">
+                                ${getThreatLevel(anomaly.threat_severity_index || anomaly.threat_level || 0.5)} 
+                                (${((anomaly.threat_severity_index || anomaly.threat_level || 0.5) * 100).toFixed(0)}%)
+                            </span>
+                        </div>
+                        <div>
+                            <strong style="color: var(--cyber-yellow);">⏰ Detection Time:</strong><br>
+                            ${anomaly.detected_at ? new Date(anomaly.detected_at).toLocaleString() : (anomaly.timestamp ? new Date(anomaly.timestamp * 1000).toLocaleString() : 'Unknown')}
+                        </div>
+                        <div>
+                            <strong style="color: var(--cyber-yellow);">🎞️ Frame Info:</strong><br>
+                            Frame #${anomaly.frame_count || anomaly.frame_id || 'Unknown'}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- TIER 1 ANALYSIS SECTION -->
+                <div style="background: rgba(0, 255, 255, 0.1); border: 2px solid var(--cyber-primary); border-radius: 10px; padding: 20px; margin-bottom: 25px;">
+                    <h3 style="color: var(--cyber-primary); margin-bottom: 15px;">⚡ TIER 1 DETECTION ANALYSIS</h3>
+                    <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <strong style="color: var(--cyber-green);">📝 Detection Details:</strong><br>
+                        <span style="color: rgba(0, 255, 255, 0.9);">${anomaly.details || 'No detection details available'}</span>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px;">
+                            <strong style="color: var(--cyber-yellow);">📊 Analysis Scores:</strong><br>
+                            Visual: ${((anomaly.visual_score || 0.5) * 100).toFixed(0)}%<br>
+                            Audio: ${((anomaly.audio_score || 0.5) * 100).toFixed(0)}%<br>
+                            ${anomaly.multimodal_agreement ? `Multimodal: ${(anomaly.multimodal_agreement * 100).toFixed(0)}%` : ''}
+                        </div>
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px;">
+                            <strong style="color: var(--cyber-yellow);">🎬 Media References:</strong><br>
+                            Video: ${anomaly.video_file ? anomaly.video_file.split('/').pop() : 'Not available'}<br>
+                            Frame: ${anomaly.frame_file ? anomaly.frame_file.split('/').pop() : 'Not available'}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add Tier 2 Analysis if available
+            if (anomaly.tier2_analysis) {
+                const tier2 = anomaly.tier2_analysis;
+                modalContent += `
+                    <!-- TIER 2 AI ANALYSIS SECTION -->
+                    <div style="background: rgba(136, 68, 255, 0.15); border: 2px solid var(--cyber-purple); border-radius: 10px; padding: 20px; margin-bottom: 25px;">
+                        <h3 style="color: var(--cyber-purple); margin-bottom: 15px;">🤖 TIER 2 AI DEEP ANALYSIS</h3>
+                        
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <strong style="color: var(--cyber-purple);">🧠 AI Reasoning Summary:</strong><br>
+                            <span style="color: rgba(136, 68, 255, 0.9); line-height: 1.5;">
+                                ${tier2.reasoning_summary || 'No AI reasoning summary available'}
+                            </span>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px;">
+                                <strong style="color: var(--cyber-yellow);">📈 Advanced Scores:</strong><br>
+                                Threat Severity: ${((tier2.threat_severity_index || 0.5) * 100).toFixed(0)}%<br>
+                                Visual Score: ${((tier2.visual_score || 0.5) * 100).toFixed(0)}%<br>
+                                Audio Score: ${((tier2.audio_score || 0.5) * 100).toFixed(0)}%<br>
+                                Multimodal: ${((tier2.multimodal_agreement || 0.5) * 100).toFixed(0)}%
+                            </div>
+                            <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px;">
+                                <strong style="color: var(--cyber-yellow);">🔬 Analysis Details:</strong><br>
+                                Frame ID: ${tier2.frame_id || 'Unknown'}<br>
+                                Timestamp: ${tier2.timestamp || 'Unknown'}<br>
+                                Processing Time: ${tier2.analysis_time || 'Unknown'}
+                            </div>
+                        </div>
+                        
+                        ${tier2.detailed_analysis ? `
+                            <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                                <strong style="color: var(--cyber-purple);">🔍 Detailed Analysis:</strong><br>
+                                <pre style="color: rgba(136, 68, 255, 0.9); white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 0.9rem; line-height: 1.4; margin-top: 5px;">
+${tier2.detailed_analysis}
+                                </pre>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            } else {
+                modalContent += `
+                    <!-- NO TIER 2 ANALYSIS -->
+                    <div style="background: rgba(255, 165, 0, 0.15); border: 2px solid var(--cyber-yellow); border-radius: 10px; padding: 20px; margin-bottom: 25px;">
+                        <h3 style="color: var(--cyber-yellow); margin-bottom: 15px;">⚠️ TIER 2 ANALYSIS STATUS</h3>
+                        <p style="color: var(--cyber-yellow); text-align: center; font-size: 1.1rem;">
+                            🔄 Tier 2 AI analysis not yet available for this anomaly<br>
+                            <small style="color: rgba(255, 221, 0, 0.7);">Analysis may still be processing or this anomaly was detected in Tier 1 only mode</small>
+                        </p>
+                    </div>
+                `;
+            }
+            
+            // Add any additional data
+            if (anomaly.reasoning_summary && anomaly.reasoning_summary !== (anomaly.tier2_analysis?.reasoning_summary || '')) {
+                modalContent += `
+                    <!-- ADDITIONAL REASONING -->
+                    <div style="background: rgba(0, 255, 136, 0.1); border: 2px solid var(--cyber-green); border-radius: 10px; padding: 20px; margin-bottom: 25px;">
+                        <h3 style="color: var(--cyber-green); margin-bottom: 15px;">💭 ADDITIONAL REASONING</h3>
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px;">
+                            <pre style="color: rgba(0, 255, 136, 0.9); white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 0.9rem; line-height: 1.4;">
+${anomaly.reasoning_summary}
+                            </pre>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            modalContent += `
+                <!-- TECHNICAL METADATA -->
+                <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--cyber-gray); border-radius: 10px; padding: 20px;">
+                    <h3 style="color: var(--cyber-gray); margin-bottom: 15px;">🔧 TECHNICAL METADATA</h3>
+                    <div style="font-family: 'Courier New', monospace; font-size: 0.85rem; color: rgba(255, 255, 255, 0.7);">
+                        <pre style="margin: 0; white-space: pre-wrap;">
+${JSON.stringify({
+    frame_id: anomaly.frame_id,
+    timestamp: anomaly.timestamp,
+    session_id: anomaly.session_id,
+    threat_level: anomaly.threat_level,
+    current_session: anomaly.current_session,
+    detected_objects: anomaly.detected_objects
+}, null, 2)}
+                        </pre>
+                    </div>
+                </div>
+            `;
+            
+            // Show the modal
+            document.getElementById('modalAnalysisContent').innerHTML = modalContent;
+            document.getElementById('analysisModal').style.display = 'block';
+            
+            console.log('✅ Modal displayed with comprehensive analysis');
+        }
+        
+        function closeAnalysisModal() {
+            document.getElementById('analysisModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('analysisModal');
+            if (event.target === modal) {
+                closeAnalysisModal();
+            }
         }
 
         // Enhanced detailed frame analysis modal for continuous frames

@@ -1,23 +1,33 @@
 from groq import Groq
 import json
 import os
+import traceback
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Initialize Groq client with simple error handling
-try:
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    if groq_api_key:
-        groq_client = Groq(api_key=groq_api_key)
+def initialize_groq_client():
+    try:
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        print(f"🔑 GROQ_API_KEY found: {groq_api_key[:20]}..." if groq_api_key else "❌ GROQ_API_KEY not found")
+        
+        if not groq_api_key:
+            print("⚠️ GROQ_API_KEY not found in environment")
+            return None
+            
+        # Simple initialization
+        client = Groq(api_key=groq_api_key)
         print("🤖 Groq AI client initialized successfully")
-    else:
-        print("⚠️ GROQ_API_KEY not found in environment")
-        groq_client = None
-except Exception as e:
-    print(f"⚠️ Groq client failed to initialize: {e}")
-    groq_client = None
+        return client
+                
+    except Exception as e:
+        print(f"⚠️ Groq client failed to initialize: {e}")
+        print(f"📋 Full error: {traceback.format_exc()}")
+        return None
+
+groq_client = initialize_groq_client()
 
 
 
@@ -126,14 +136,14 @@ def tier1_fusion(pose_summary, audio_summary, scene_summary):
         details = f"SCENE VIOLENCE: Scene={scene_prob:.3f}(high), Pose={pose_detected}(conf={pose_confidence:.2f})"
         print(f"🚨 TIER1 SCENE VIOLENCE: {details}")
 
-    elif scene_prob >= 0.50 and not pose_detected:
-        # Moderate scene confidence when pose is weak - but higher threshold
+    elif scene_prob >= 0.70 and not pose_detected:
+        # Higher threshold for scene-only detection to reduce false positives
         result = "Suspected Anomaly"
-        details = f"Scene-based detection: Scene={scene_prob:.3f}(moderate), Pose={pose_detected}(conf={pose_confidence:.2f})"
+        details = f"Scene-based detection: Scene={scene_prob:.3f}(high), Pose={pose_detected}(conf={pose_confidence:.2f})"
         print(f"🚨 TIER1 SCENE MODERATE: {details}")
         
-    elif audio_detected and (pose_detected or scene_prob > 0.30):
-        # Audio with strong other support (raised threshold from 0.15 to 0.30)
+    elif audio_detected and (pose_detected or scene_prob > 0.50):
+        # Audio with strong other support - higher threshold for scene support
         result = "Suspected Anomaly"
         details = f"Audio + support: Audio={audio_detected}(conf={audio_confidence:.2f}), Pose={pose_detected}, Scene={scene_prob:.3f}"
         print(f"🚨 TIER1 AUDIO SUPPORTED: {details}")
@@ -184,33 +194,52 @@ def tier2_fusion(audio_transcript, captions, visual_anomaly_max, tier1_details, 
     
     # 3. Try AI analysis if available (simplified)
     if groq_client is None:
-        print("⚠️ Using intelligent fallback (no AI)")
+        print("⚠️ Using intelligent fallback (no AI) - Groq client not initialized")
+        fallback_result["reasoning_summary"] = "⚠️ Fallback analysis (AI unavailable): " + fallback_result["reasoning_summary"]
         return fallback_result
     
     try:
+        print("🤖 Attempting Groq AI analysis...")
         # Build effective but simple prompt
         visual_summary = " | ".join(captions[:3]) if captions else "No visual description"  # Limit to 3 captions
         audio_text = audio_transcript[:200] if audio_transcript else "No audio"  # Limit audio length
         
-        prompt = f"""Analyze this emergency situation. Return ONLY valid JSON.
+        prompt = f"""You are an expert security analyst evaluating potential threats in surveillance footage. Analyze this situation thoroughly and provide detailed reasoning.
 
-DATA:
-- Tier 1: {tier1_details}
-- Visual: {visual_summary}
-- Audio: {audio_text}
-- Visual Score: {visual_anomaly_max:.2f}
+SITUATION ANALYSIS:
+- Tier 1 Detection: {tier1_details}
+- Visual Description: {visual_summary}
+- Audio Transcript: {audio_text}
+- Initial Visual Anomaly Score: {visual_anomaly_max:.2f}
 
-Return JSON with exactly these keys:
-{{"visual_score": 0.0-1.0, "audio_score": 0.0-1.0, "text_alignment_score": 0.0-1.0, "multimodal_agreement": 0.0-1.0, "reasoning_summary": "brief analysis", "threat_severity_index": 0.0-1.0}}"""
+ANALYSIS REQUIREMENTS:
+1. Evaluate the severity of any violence, aggression, or emergency situation
+2. Consider body language, environmental context, and audio cues
+3. Assess the credibility and urgency of the threat
+4. Factor in potential false positives (normal activities misdetected)
+
+Provide a comprehensive analysis as valid JSON with these exact keys:
+{{
+  "visual_score": [0.0-1.0 - how concerning are the visual elements],
+  "audio_score": [0.0-1.0 - how alarming is the audio content],
+  "text_alignment_score": [0.0-1.0 - how well audio matches visual],
+  "multimodal_agreement": [0.0-1.0 - consistency between all modalities],
+  "reasoning_summary": "[Detailed 2-3 sentence analysis of what you observe and why it's concerning/normal]",
+  "threat_severity_index": [0.0-1.0 - overall threat level: 0.0-0.3=low, 0.4-0.6=medium, 0.7-1.0=high]
+}}
+
+Focus on providing intelligent, context-aware analysis that explains WHAT you see and WHY it matters for security."""
 
         response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.1-8b-instant",  # Updated to currently supported model
-            temperature=0.1,  # Very low for consistency
-            max_tokens=250    # Shorter for faster response
+            temperature=0.3,  # Slightly higher for more detailed analysis
+            max_tokens=400    # More tokens for detailed reasoning
         )
         
+        print("✅ Groq API call successful, parsing response...")
         ai_output = response.choices[0].message.content.strip()
+        print(f"🤖 Raw AI response: {ai_output[:100]}...")
         
         # Robust JSON extraction
         json_start = ai_output.find('{')
@@ -238,11 +267,19 @@ Return JSON with exactly these keys:
                     ai_result["reasoning_summary"] = fallback_result["reasoning_summary"]
                 
                 print(f"✅ AI analysis complete: threat={ai_result['threat_severity_index']:.2f}")
+                ai_result["reasoning_summary"] = "🤖 AI Analysis: " + ai_result["reasoning_summary"]
                 return ai_result
+            else:
+                print(f"⚠️ Missing required keys in AI response: {list(ai_result.keys())}")
+        else:
+            print(f"⚠️ No valid JSON found in AI response")
         
         print(f"⚠️ Invalid AI response format, using fallback")
+        fallback_result["reasoning_summary"] = "⚠️ Fallback analysis (AI format error): " + fallback_result["reasoning_summary"]
         return fallback_result
             
     except Exception as ai_error:
-        print(f"🤖 AI error: {ai_error}, using fallback")
+        print(f"🤖 AI error: {ai_error}")
+        print(f"📋 AI error details: {traceback.format_exc()}")
+        fallback_result["reasoning_summary"] = f"⚠️ Fallback analysis (AI error: {str(ai_error)[:50]}): " + fallback_result["reasoning_summary"]
         return fallback_result

@@ -152,8 +152,8 @@ async def root():
 
 @app.get("/dashboard")
 async def serve_dashboard():
-    """Serve the simplified dashboard HTML"""
-    return FileResponse("simple_dashboard.html")
+    """Serve the dashboard HTML"""
+    return FileResponse("dashboard.html")
 
 @app.post("/dashboard/new_session")
 async def start_new_session():
@@ -331,6 +331,26 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                     
                     dashboard_mode.add_dashboard_anomaly(anomaly_data)
                     
+                    # 🚨 CRITICAL: Send tier1_detection message to create pipeline card
+                    tier1_message = {
+                        "type": "tier1_detection",
+                        "frame_id": frame_id,
+                        "timestamp": timestamp,
+                        "status": tier1_result.get("status", "Suspected Anomaly"),
+                        "details": frame_reasoning,
+                        "tier1_components": tier1_result.get("tier1_components", {}),
+                        "confidence": confidence_score,
+                        "detected_objects": detected_objects,
+                        "fusion_status": "live-detection",
+                        "video_file": f"dashboard_recording_{int(time.time())}.mp4",
+                        "frame_file": anomaly_frame_path,
+                        "session_id": dashboard_session.session_id,
+                        "analysis_time": datetime.now().strftime("%H:%M:%S")
+                    }
+                    
+                    await websocket.send_json(tier1_message)
+                    print(f"📡 Dashboard: Sent tier1_detection message for pipeline card creation")
+                    
                     # Run Tier 2 analysis in background
                     asyncio.create_task(run_tier2_for_dashboard(frame, frame_id, timestamp, websocket))
                 
@@ -356,6 +376,14 @@ async def run_tier2_for_dashboard(frame, frame_id: int, timestamp: float, websoc
     try:
         print(f"🔬 Dashboard: Starting Tier 2 analysis for frame {frame_id}")
         
+        # Send Tier 2 start notification
+        await websocket.send_json({
+            "type": "tier2_start",
+            "frame_id": frame_id,
+            "timestamp": timestamp,
+            "message": "Starting Tier 2 AI analysis..."
+        })
+        
         # Run Tier 2 analysis  
         # For dashboard, we need to pass proper tier1_result structure
         tier1_result_for_tier2 = {
@@ -371,6 +399,7 @@ async def run_tier2_for_dashboard(frame, frame_id: int, timestamp: float, websoc
         )
         
         print(f"✅ Dashboard: Tier 2 complete for frame {frame_id}")
+        print(f"📊 Dashboard: Tier 2 result: {tier2_result}")
         
         # Update anomaly in dashboard_mode
         anomalies = dashboard_mode.get_dashboard_anomalies()
@@ -379,8 +408,35 @@ async def run_tier2_for_dashboard(frame, frame_id: int, timestamp: float, websoc
                 anomaly["tier2_analysis"] = tier2_result
                 break
         
+        # 🚨 CRITICAL: Send Tier 2 results to frontend via WebSocket
+        tier2_message = {
+            "type": "tier2_results",
+            "frame_id": frame_id,
+            "timestamp": timestamp,
+            "threat_severity_index": tier2_result.get("threat_severity_index", 0.5),
+            "reasoning_summary": tier2_result.get("reasoning_summary", "Analysis complete"),
+            "visual_score": tier2_result.get("visual_score", 0.5),
+            "audio_score": tier2_result.get("audio_score", 0.5),
+            "multimodal_agreement": tier2_result.get("multimodal_agreement", 0.5),
+            "detailed_analysis": tier2_result.get("detailed_analysis", ""),
+            "analysis_time": datetime.now().strftime("%H:%M:%S")
+        }
+        
+        await websocket.send_json(tier2_message)
+        print(f"📡 Dashboard: Sent Tier 2 results to frontend for frame {frame_id}")
+        
     except Exception as e:
         print(f"❌ Dashboard Tier 2 error: {e}")
+        # Send error notification to frontend
+        try:
+            await websocket.send_json({
+                "type": "tier2_error",
+                "frame_id": frame_id,
+                "timestamp": timestamp,
+                "error": str(e)
+            })
+        except:
+            pass
 
 @app.get("/debug/dashboard_status")
 async def debug_dashboard_status():
