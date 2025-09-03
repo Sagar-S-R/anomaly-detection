@@ -68,26 +68,19 @@ memory_users = {}  # Dictionary to store users when DB is unavailable
 
 async def broadcast_anomaly_to_user(username: str, anomaly_data: dict):
     """Broadcast new anomaly to user's active WebSocket connection"""
-    print(f"🔍 Attempting to broadcast anomaly to user: {username}")
     websocket = session_manager.get_websocket(username)
-    print(f"🔍 WebSocket found for {username}: {websocket is not None}")
-    
     if websocket:
         try:
-            message = {
+            await websocket.send_text(json.dumps({
                 "type": "new_anomaly",
                 "data": anomaly_data,
                 "timestamp": time.time()
-            }
-            await websocket.send_text(json.dumps(message))
+            }))
             print(f"📡 Broadcasted anomaly to user {username}")
-            print(f"📨 Message content: {json.dumps(message, indent=2)}")
         except Exception as e:
             print(f"❌ Failed to broadcast to {username}: {e}")
             # Remove disconnected connection
             session_manager.unregister_websocket(username)
-    else:
-        print(f"🔍 No active WebSocket connection for user {username}")
 
 async def cleanup_all_sessions():
     """MASTER CLEANUP - Single entry point for all session cleanup"""
@@ -275,18 +268,9 @@ def add_user_anomaly(username, anomaly_type, anomaly_data):
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # CRITICAL FIX: Always attempt to broadcast, don't skip due to loop issues
                 asyncio.create_task(broadcast_anomaly_to_user(username, clean_data))
-                print(f"📡 Scheduled broadcast for user {username}")
         except Exception as e:
-            print(f"⚠️ Could not schedule broadcast (non-critical): {e}")
-            # Fallback: try to broadcast directly if possible
-            try:
-                websocket = session_manager.get_websocket(username)
-                if websocket:
-                    print(f"🔄 Attempting direct broadcast fallback for {username}")
-            except Exception as fallback_error:
-                print(f"⚠️ Direct broadcast fallback also failed: {fallback_error}")
+            print(f"⚠️ Could not broadcast anomaly (non-critical): {e}")
         
         print(f"✅ Added anomaly for {username} ({anomaly_type}): {clean_data.get('details', '')}")
         return True
@@ -1088,8 +1072,8 @@ async def stream_video(websocket: WebSocket):
                 # �🔍 DETAILED TIER 1 LOGGING
                 print(f"🔍 Tier1 Result: {json.dumps(tier1_result, indent=2)}")
                 
-                status = tier1_result.get("status", "Normal") if tier1_result and isinstance(tier1_result, dict) else "Normal"
-                details = tier1_result.get("details", "No details") if tier1_result and isinstance(tier1_result, dict) else "No details"
+                status = tier1_result.get("status", "Normal")
+                details = tier1_result.get("details", "No details")
                 
                 if status == "Suspected Anomaly":
                     # CONSOLIDATED: Use SessionManager for anomaly cooldown tracking
@@ -1149,15 +1133,9 @@ async def stream_video(websocket: WebSocket):
                             "tier2_analysis": None  # Will be populated when Tier 2 completes
                         }
                         
-                        # CRITICAL FIX: For dashboard users, store in BOTH places for maximum compatibility
+                        # Use simplified storage for dashboard mode
                         if is_dashboard:
-                            # Store in dashboard mode for dashboard-specific endpoints
-                            dashboard_result = dashboard_mode.add_dashboard_anomaly(anomaly_event)
-                            print(f"📊 Dashboard anomaly stored: {dashboard_result is not None}")
-                            
-                            # ALSO store in user anomaly system for /anomaly_events compatibility
-                            add_user_anomaly(current_username, 'live', anomaly_event)
-                            print(f"📊 User anomaly stored for dashboard user: {current_username}")
+                            dashboard_mode.add_dashboard_anomaly(anomaly_event)
                         else:
                             # Use complex user-specific storage for frontend
                             add_user_anomaly(current_username, 'live', anomaly_event)
@@ -1580,151 +1558,15 @@ async def start_new_dashboard_session():
     import uuid
     new_session_id = str(uuid.uuid4())
     dashboard_mode.force_new_monitoring_session(new_session_id, f"dashboard_recording_{int(time.time())}.mp4")
-    
-    # CRITICAL FIX: Ensure monitoring is activated
-    dashboard_mode.session_metadata['monitoring_active'] = True
-    print(f"✅ Dashboard monitoring activated: {dashboard_mode.session_metadata['monitoring_active']}")
-    
     return {
         "success": True,
         "message": "New monitoring session started - old frames cleared",
-        "session_id": new_session_id,
-        "monitoring_active": dashboard_mode.session_metadata['monitoring_active']
+        "session_id": new_session_id
     }
 
 @app.get("/")
 async def root():
     return {"message": "Anomaly Detection API", "dashboard": "/dashboard"}
-
-@app.get("/debug/test_anomaly")
-async def test_anomaly_creation():
-    """DEBUG ENDPOINT: Create a test anomaly to verify the system works"""
-    import uuid
-    
-    # Create test anomaly data
-    test_anomaly = {
-        'id': str(uuid.uuid4()),
-        'frame_id': f"test_{int(time.time())}",
-        'timestamp': time.time(),
-        'session_time': datetime.now().isoformat(),
-        'details': "TEST ANOMALY: Manual test anomaly created via debug endpoint",
-        'fusion_status': 'test',
-        'frame_count': 1,
-        'duration': 0.0,
-        'tier1_result': {
-            'confidence': 0.85,
-            'scene_detected': True,
-            'pose_detected': True,
-            'audio_detected': False,
-            'audio_transcription': '',
-        },
-        'tier2_analysis': {
-            'threat_severity_index': 0.75,
-            'reasoning_summary': 'Test anomaly for debugging purposes',
-            'visual_score': 0.8,
-            'audio_score': 0.0,
-            'multimodal_agreement': 0.7
-        },
-        'frame_file': None,
-        'video_file': None,
-        'anomaly_type': 'test',
-        'created_at': time.time(),
-        'username': 'dashboard_user'
-    }
-    
-    # Store in both dashboard and user systems
-    dashboard_result = dashboard_mode.add_dashboard_anomaly(test_anomaly)
-    user_result = add_user_anomaly('dashboard_user', 'live', test_anomaly)
-    
-    return {
-        "success": True,
-        "message": "Test anomaly created",
-        "dashboard_stored": dashboard_result is not None,
-        "user_stored": user_result,
-        "monitoring_active": dashboard_mode.session_metadata.get('monitoring_active', False),
-        "test_anomaly": test_anomaly
-    }
-
-@app.get("/debug/test_websocket")
-async def test_websocket_anomaly():
-    """DEBUG ENDPOINT: Send a test anomaly via WebSocket to dashboard_user"""
-    websocket = session_manager.get_websocket("dashboard_user")
-    
-    if not websocket:
-        return {
-            "success": False,
-            "message": "No active WebSocket connection for dashboard_user",
-            "active_connections": list(session_manager._websocket_connections.keys())
-        }
-    
-    # Create test anomaly message
-    test_message = {
-        "status": "Suspected Anomaly",
-        "details": "TEST ANOMALY: Manually triggered via debug endpoint",
-        "frame_id": f"test_{int(time.time())}",
-        "timestamp": time.time(),
-        "fusion_status": "test",
-        "video_file": "test.mp4",
-        "tier1_components": {
-            "pose_analysis": {
-                "anomaly_detected": True,
-                "summary": "Test pose anomaly",
-                "raw_score": 0.85
-            },
-            "audio_analysis": {
-                "transcripts": [],
-                "available": False,
-                "summary": "No audio for test",
-                "transcript_text": ""
-            },
-            "scene_analysis": {
-                "anomaly_probability": 0.92,
-                "summary": "Test scene anomaly with high confidence"
-            },
-            "fusion_logic": {
-                "initial_status": "Suspected Anomaly",
-                "final_status": "Suspected Anomaly",
-                "smoothing_applied": False,
-                "details": "TEST: High-confidence test anomaly"
-            }
-        }
-    }
-    
-    try:
-        await websocket.send_json(test_message)
-        return {
-            "success": True,
-            "message": "Test anomaly sent via WebSocket",
-            "test_data": test_message
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Failed to send test anomaly: {e}",
-            "error": str(e)
-        }
-
-@app.get("/debug/dashboard_status")
-async def dashboard_status():
-    """DEBUG ENDPOINT: Check dashboard status and data"""
-    dashboard_anomalies = dashboard_mode.get_dashboard_anomalies()
-    user_anomalies = get_user_anomalies('dashboard_user')
-    
-    return {
-        "dashboard_mode": {
-            "monitoring_active": dashboard_mode.session_metadata.get('monitoring_active', False),
-            "session_id": dashboard_mode.current_session_id,
-            "session_start": dashboard_mode.session_metadata.get('session_start'),
-            "anomaly_count": len(dashboard_anomalies),
-            "session_metadata": dashboard_mode.session_metadata
-        },
-        "user_mode": {
-            "anomaly_count": len(user_anomalies),
-            "last_5_anomalies": user_anomalies[:5] if user_anomalies else []
-        },
-        "websocket_connections": list(session_manager._websocket_connections.keys()),
-        "active_sessions": len(session_manager._sessions)
-    }
 
 @app.get("/user_stats/{username}")
 async def get_user_stats(username: str):
