@@ -82,13 +82,13 @@ def apply_temporal_smoothing(current_status, current_scene_prob, current_pose_an
         return "Normal"
 
 def run_tier1_continuous(frame, audio_chunk_path):
-    """Enhanced Tier 1 processing with structured logging and error handling"""
+    """Enhanced Tier 1 processing with FIXED audio handling"""
     try:
         # Initialize components with error handling
         pose_anomaly = 0
         pose_summary = "Pose processing skipped"
         audio_transcripts = []
-        audio_summary = "No audio available"
+        audio_summary = None  # KEY CHANGE: Start with None to distinguish states
         anomaly_prob = 0.0
         scene_summary = "Scene processing skipped"
         
@@ -97,27 +97,49 @@ def run_tier1_continuous(frame, audio_chunk_path):
             pose_anomaly = process_pose_frame(frame)
             pose_summary = f"Pose anomaly detected: {bool(pose_anomaly)}"
         except Exception as e:
-            print(f"⚠️ Pose processing error: {e}")
+            print(f"⚠ Pose processing error: {e}")
             pose_anomaly = 0
             pose_summary = f"Pose processing failed: {str(e)}"
 
-        # Audio processing with error handling
+        # FIXED Audio processing with proper state tracking
+        audio_processing_attempted = False
         try:
-            if audio_chunk_path:
+            # Check if audio is available
+            if audio_chunk_path and isinstance(audio_chunk_path, str) and len(audio_chunk_path.strip()) > 0:
+                print(f"🎤 Processing audio from: {audio_chunk_path}")
+                audio_processing_attempted = True
+                
                 transcripts = chunk_and_transcribe_tiny(audio_chunk_path)
                 audio_transcripts = transcripts if transcripts else []
-                audio_summary = "Audio transcripts: " + " | ".join(transcripts) if transcripts else "No transcripts found"
                 
-                # Debug: Print what we found (only for emergencies)
-                if transcripts:
+                if transcripts and len(transcripts) > 0:
+                    # Audio successfully processed with content
+                    audio_summary = " | ".join(transcripts)
+                    print(f"🎤 Audio transcripts found: {len(transcripts)} segments")
+                    
+                    # Debug: Print emergency audio immediately
                     for transcript in transcripts:
-                        if any(word in transcript.lower() for word in ["help", "emergency", "call", "911"]):
+                        if any(word in transcript.lower() for word in ["help", "emergency", "call", "911", "fire"]):
                             print(f"🚨 EMERGENCY AUDIO DETECTED: '{transcript}'")
+                else:
+                    # Audio processed but no transcripts (silence or unclear audio)
+                    audio_summary = "no transcripts"  # This will be recognized by fusion logic
+                    print(f"🎤 Audio processed but no clear transcripts")
             else:
-                audio_summary = "No audio chunk provided"
+                # No audio source provided
+                print(f"🎤 No audio source available (audio_chunk_path={audio_chunk_path})")
+                audio_summary = None  # Truly no audio available
+                
         except Exception as e:
-            print(f"⚠️ Audio processing error: {e}")
-            audio_summary = f"Audio processing failed: {str(e)}"
+            print(f"⚠ Audio processing error: {e}")
+            if audio_processing_attempted:
+                # Audio was available but failed to process
+                audio_summary = "audio processing failed"
+                print(f"🎤 Audio processing failed: {str(e)}")
+            else:
+                # No audio was available to begin with
+                audio_summary = None
+                print(f"🎤 No audio available due to error: {str(e)}")
 
         # Scene processing with error handling
         try:
@@ -129,19 +151,24 @@ def run_tier1_continuous(frame, audio_chunk_path):
             anomaly_prob = process_scene_frame(rgb_frame)
             scene_summary = f"Scene anomaly probability: {anomaly_prob:.3f}"
         except Exception as e:
-            print(f"⚠️ Scene processing error: {e}")
+            print(f"⚠ Scene processing error: {e}")
             anomaly_prob = 0.0
             scene_summary = f"Scene processing failed: {str(e)}"
 
-        # Tier 1 fusion with error handling
+        # FIXED Tier 1 fusion with proper audio state handling
         try:
-            # Only print fusion debug for emergencies or actual anomalies
+            print(f"🔧 Fusion inputs: pose='{pose_summary}', audio='{audio_summary}', scene='{scene_summary}'")
+            
             initial_status, fusion_details = tier1_fusion(pose_summary, audio_summary, scene_summary)
             
             if initial_status == "Suspected Anomaly":
                 print(f"🚨 ANOMALY DETECTED: {fusion_details}")
+            elif anomaly_prob > 0.5 or pose_anomaly > 0:
+                print(f"🟡 Notable activity: {fusion_details}")
+                
         except Exception as e:
-            print(f"⚠️ Fusion logic error: {e}")
+            print(f"⚠ Fusion logic error: {e}")
+            print(f"📋 Fusion error traceback: {traceback.format_exc()}")
             initial_status = "Error"
             fusion_details = f"Fusion failed: {str(e)}"
         
@@ -152,7 +179,7 @@ def run_tier1_continuous(frame, audio_chunk_path):
         if smoothed_status != initial_status:
             fusion_details += f" [Smoothed from {initial_status} to {smoothed_status}]"
         
-        # Construct enhanced response with detailed components
+        # ENHANCED result with better audio state tracking
         result = {
             "status": smoothed_status,
             "details": fusion_details,
@@ -163,10 +190,12 @@ def run_tier1_continuous(frame, audio_chunk_path):
                     "raw_score": pose_anomaly
                 },
                 "audio_analysis": {
+                    "available": audio_summary is not None,  # True availability check
                     "transcripts": audio_transcripts,
-                    "available": bool(audio_chunk_path),
-                    "summary": audio_summary,
-                    "transcript_text": " | ".join(audio_transcripts) if audio_transcripts else ""
+                    "processing_attempted": audio_processing_attempted,
+                    "summary": audio_summary if audio_summary else "No audio available",
+                    "transcript_text": " | ".join(audio_transcripts) if audio_transcripts else "",
+                    "audio_source_provided": bool(audio_chunk_path)
                 },
                 "scene_analysis": {
                     "anomaly_probability": round(anomaly_prob, 3),
@@ -181,15 +210,18 @@ def run_tier1_continuous(frame, audio_chunk_path):
             }
         }
         
-        # Log structured output for debugging
-        print(f"🔍 Tier1 Result: {json.dumps(result, indent=2)}")
+        # CONDITIONAL logging - only log anomalies or significant events
+        if smoothed_status == "Suspected Anomaly" or anomaly_prob > 0.3 or pose_anomaly > 0:
+            print(f"🔍 Tier1 Result: {json.dumps(result, indent=2)}")
+        else:
+            # Minimal logging for normal frames
+            print(f"✅ Tier1 Normal: scene={anomaly_prob:.2f}, pose={pose_anomaly}, audio={'Yes' if audio_summary else 'No'}")
         
         return result
         
     except Exception as e:
         print(f"❌ Critical error in run_tier1_continuous: {e}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
+        print(f"📋 Critical error traceback: {traceback.format_exc()}")
         
         # Return error result
         return {
@@ -197,20 +229,77 @@ def run_tier1_continuous(frame, audio_chunk_path):
             "details": f"Critical processing error: {str(e)}",
             "tier1_components": {
                 "pose_analysis": {"anomaly_detected": False, "summary": "Error", "raw_score": 0},
-                "audio_analysis": {"transcripts": [], "available": False, "summary": "Error", "transcript_text": ""},
+                "audio_analysis": {
+                    "available": False, 
+                    "transcripts": [], 
+                    "processing_attempted": False,
+                    "summary": "Error", 
+                    "transcript_text": "",
+                    "audio_source_provided": bool(audio_chunk_path) if 'audio_chunk_path' in locals() else False
+                },
                 "scene_analysis": {"anomaly_probability": 0.0, "summary": "Error"},
-                "fusion_logic": {"initial_status": "Error", "final_status": "Error", "smoothing_applied": False, "details": f"Critical error: {str(e)}"}
+                "fusion_logic": {
+                    "initial_status": "Error", 
+                    "final_status": "Error", 
+                    "smoothing_applied": False, 
+                    "details": f"Critical error: {str(e)}"
+                }
             }
         }
 
 def run_tier1(video_path):
-    # Keep original batch function
-    audio_path = extract_audio(video_path)
-    transcripts = chunk_and_transcribe_tiny(audio_path)
-    num_anomalies, total_frames, _, _ = process_pose(video_path)
-    pose_summary = f"Pose anomalies (fall/crawl) detected in {num_anomalies} out of {total_frames} frames."
-    audio_summary = "Audio transcripts: " + " | ".join(transcripts) if transcripts else "No audio."
-    max_anomaly_prob = process_scene_tier1(video_path)
-    scene_summary = f"Highest scene anomaly probability: {max_anomaly_prob:.2f}"
-    status, details = tier1_fusion(pose_summary, audio_summary, scene_summary)
-    return {"status": status, "details": details}
+    """Keep original batch function - ENHANCED with better audio handling"""
+    try:
+        # Audio processing with better error handling
+        audio_transcripts = []
+        try:
+            audio_path = extract_audio(video_path)
+            if audio_path:
+                transcripts = chunk_and_transcribe_tiny(audio_path)
+                audio_transcripts = transcripts if transcripts else []
+                
+                if audio_transcripts:
+                    audio_summary = " | ".join(audio_transcripts)
+                else:
+                    audio_summary = "no transcripts"  # Processed but silent
+            else:
+                audio_summary = None  # No audio available
+        except Exception as e:
+            print(f"⚠ Batch audio processing error: {e}")
+            audio_summary = "audio processing failed"
+        
+        # Pose processing
+        try:
+            num_anomalies, total_frames, _, _ = process_pose(video_path)
+            pose_summary = f"Pose anomalies (fall/crawl) detected in {num_anomalies} out of {total_frames} frames."
+        except Exception as e:
+            print(f"⚠ Batch pose processing error: {e}")
+            pose_summary = f"Pose processing failed: {str(e)}"
+        
+        # Scene processing
+        try:
+            max_anomaly_prob = process_scene_tier1(video_path)
+            scene_summary = f"Highest scene anomaly probability: {max_anomaly_prob:.2f}"
+        except Exception as e:
+            print(f"⚠ Batch scene processing error: {e}")
+            scene_summary = f"Scene processing failed: {str(e)}"
+        
+        # Fusion
+        status, details = tier1_fusion(pose_summary, audio_summary, scene_summary)
+        
+        return {
+            "status": status, 
+            "details": details,
+            "batch_info": {
+                "audio_transcripts": audio_transcripts,
+                "audio_available": audio_summary is not None
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Critical error in run_tier1: {e}")
+        return {
+            "status": "Error",
+            "details": f"Batch processing error: {str(e)}",
+            "batch_info": {"audio_transcripts": [], "audio_available": False}
+        }

@@ -32,14 +32,11 @@ groq_client = initialize_groq_client()
 
 
 def tier1_fusion(pose_summary, audio_summary, scene_summary):
-    """IMPROVED Tier 1 fusion - better accuracy with simple logic"""
+    """IMPROVED Tier 1 fusion - handles missing audio gracefully"""
     
-    # 1. Extract scene probability (cleaner parsing with type handling)
+    # 1. Extract scene probability
     scene_prob = 0.0
-    
-    # Handle both string and numeric scene outputs  
     if isinstance(scene_summary, (int, float)):
-        # Scene processing returned a confidence score directly
         scene_prob = min(1.0, max(0.0, float(scene_summary)))
     elif scene_summary and isinstance(scene_summary, str) and "Scene anomaly probability:" in scene_summary:
         try:
@@ -48,145 +45,107 @@ def tier1_fusion(pose_summary, audio_summary, scene_summary):
         except:
             scene_prob = 0.0
     
-    # 2. Parse pose anomaly (more reliable)
+    # 2. Parse pose anomaly
     pose_detected = False
     pose_confidence = 0.5
-    
     if pose_summary and isinstance(pose_summary, str):
         pose_lower = pose_summary.lower()
         if "true" in pose_lower or "anomaly detected: true" in pose_lower:
             pose_detected = True
-            
-            # Smart confidence based on detection type
             if "fall" in pose_lower:
-                pose_confidence = 0.9  # High confidence for falls
+                pose_confidence = 0.9
             elif "rapid" in pose_lower or "movement" in pose_lower:
-                pose_confidence = 0.7  # Medium-high for movement
+                pose_confidence = 0.7
             elif "instability" in pose_lower or "head" in pose_lower:
-                pose_confidence = 0.6  # Medium for other poses
+                pose_confidence = 0.6
     
-    # 3. IMPROVED Audio Analysis - more accurate keyword detection
+    # 3. Audio Analysis - but track if audio is available
     audio_detected = False
     audio_confidence = 0.0
+    audio_available = False
     
     if audio_summary and isinstance(audio_summary, str) and len(audio_summary.strip()) > 3:
+        audio_available = True
         audio_lower = audio_summary.lower().strip()
         
-        # Skip system messages and non-audio content  
-        system_messages = ["no audio", "audio processing", "transcripts", "audio chunk", "no transcripts", "available", "provided", "conversation", "talking", "speaking"]
-        if any(msg in audio_lower for msg in system_messages):
-            audio_detected = False
-            audio_confidence = 0.0
-        else:
-            # Critical emergency keywords (high precision) - ENHANCED with environmental hazards
+        # Skip system messages
+        system_messages = ["no audio", "audio processing", "transcripts", "audio chunk", "no transcripts"]
+        if not any(msg in audio_lower for msg in system_messages):
+            # Analyze audio content
             critical_keywords = ["help me", "emergency", "call 911", "heart attack", "fire", "ambulance"]
-            environmental_keywords = ["fire", "flood", "flooding", "water everywhere", "gas leak", "smoke", "burning"]
-            security_keywords = ["thief", "burglar", "break in", "stolen", "robbery", "intruder", "break-in"]
-            workplace_keywords = ["accident", "injured", "fell", "machinery", "safety", "hurt at work"]
-            electrical_keywords = ["shock", "electrocuted", "power out", "sparks", "electrical fire", "short circuit"]
+            environmental_keywords = ["fire", "flood", "flooding", "gas leak", "smoke", "burning"]
             urgent_keywords = ["help", "stop", "hurt", "pain", "no", "911", "police"]
-            concern_keywords = ["please", "wait", "scared", "call", "what", "why"]
             
             if any(word in audio_lower for word in critical_keywords):
                 audio_detected = True
                 audio_confidence = 0.95
             elif any(word in audio_lower for word in environmental_keywords):
                 audio_detected = True
-                audio_confidence = 0.90  # High confidence for environmental emergencies
-                print(f"🚨 ENVIRONMENTAL EMERGENCY AUDIO: '{audio_summary[:50]}'")
-            elif any(word in audio_lower for word in security_keywords):
-                audio_detected = True
-                audio_confidence = 0.85  # High confidence for security breaches
-                print(f"🔒 SECURITY BREACH AUDIO: '{audio_summary[:50]}'")
-            elif any(word in audio_lower for word in workplace_keywords):
-                audio_detected = True
-                audio_confidence = 0.80  # High confidence for workplace accidents
-                print(f"🔧 WORKPLACE ACCIDENT AUDIO: '{audio_summary[:50]}'")
-            elif any(word in audio_lower for word in electrical_keywords):
-                audio_detected = True
-                audio_confidence = 0.88  # High confidence for electrical emergencies
-                print(f"⚡ ELECTRICAL EMERGENCY AUDIO: '{audio_summary[:50]}'")
+                audio_confidence = 0.90
             elif any(word in audio_lower for word in urgent_keywords):
                 audio_detected = True
                 audio_confidence = 0.8
-            elif any(word in audio_lower for word in concern_keywords) and len(audio_summary) > 10:
-                audio_detected = True
-                audio_confidence = 0.6
-            elif len(audio_summary) > 30 and any(word in audio_lower for word in ["stressed", "worried", "trouble", "problem"]):
-                # Only long speech with distress indicators
-                audio_detected = True
-                audio_confidence = 0.4
-            
-        if audio_detected:
-            print(f"� AUDIO ALERT (conf={audio_confidence:.2f}): '{audio_summary[:50]}'")
     
-    # 4. IMMEDIATE DECISION if audio emergency
+    # 4. IMMEDIATE AUDIO EMERGENCY (if audio available and critical)
     if audio_detected and audio_confidence >= 0.8:
-        result = "Suspected Anomaly" 
+        result = "Suspected Anomaly"
         details = f"AUDIO EMERGENCY: '{audio_summary[:100]}' | Pose={pose_detected}, Scene={scene_prob:.3f}"
         print(f"🚨 TIER1 AUDIO EMERGENCY: {details}")
         return result, details
     
-    # 5. CALIBRATED Multi-modal Decision Logic for REAL VIOLENCE DETECTION
-    # Higher thresholds for accuracy - only trigger on actual fighting/violence
-    if pose_confidence >= 0.9:
-        scene_threshold = 0.35  # Very high pose confidence = moderate scene threshold
-    elif pose_confidence >= 0.7:
-        scene_threshold = 0.45  # High pose confidence = higher scene threshold  
-    else:
-        scene_threshold = 0.55  # Low pose confidence = high scene threshold (realistic fighting)
+    # 5. VISUAL-FIRST DETECTION (works with or without audio)
+    # HIGH VISUAL CONFIDENCE - trigger regardless of audio
+    if scene_prob >= 0.80:  # Very high scene confidence
+        result = "Suspected Anomaly"
+        details = f"HIGH SCENE CONFIDENCE: Scene={scene_prob:.3f}, Pose={pose_detected}(conf={pose_confidence:.2f}), Audio={'Available' if audio_available else 'N/A'}"
+        print(f"🚨 TIER1 HIGH SCENE: {details}")
+        return result, details
+        
+    if pose_detected and pose_confidence >= 0.85:  # Very high pose confidence
+        result = "Suspected Anomaly"
+        details = f"HIGH POSE CONFIDENCE: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, Audio={'Available' if audio_available else 'N/A'}"
+        print(f"🚨 TIER1 HIGH POSE: {details}")
+        return result, details
     
-    # REAL VIOLENCE DETECTION - Higher confidence required
-    if pose_detected and scene_prob > scene_threshold:
-        # Strong agreement between pose and scene - REAL FIGHTING
-        combined_confidence = (pose_confidence + scene_prob) / 2
+    # MEDIUM VISUAL CONFIDENCE - with adaptive thresholds
+    if pose_detected and scene_prob > 0.65:  # Strong agreement
         result = "Suspected Anomaly"
-        details = f"REAL VIOLENCE DETECTED: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, Combined={combined_confidence:.2f}"
-        print(f"🚨 TIER1 REAL VIOLENCE: {details}")
+        details = f"STRONG VISUAL AGREEMENT: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}"
+        print(f"🚨 TIER1 VISUAL AGREEMENT: {details}")
+        return result, details
         
-    elif pose_detected and pose_confidence >= 0.95:
-        # VERY high pose confidence alone - clear fighting poses
+    if scene_prob >= 0.70:  # Good scene evidence alone
         result = "Suspected Anomaly"
-        details = f"HIGH-CONFIDENCE VIOLENCE: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}"
-        print(f"🚨 TIER1 HIGH-CONFIDENCE VIOLENCE: {details}")
-        
-    elif scene_prob >= 0.75:
-        # Strong scene evidence alone - clear violence in scene
-        result = "Suspected Anomaly"
-        details = f"SCENE VIOLENCE: Scene={scene_prob:.3f}(high), Pose={pose_detected}(conf={pose_confidence:.2f})"
-        print(f"🚨 TIER1 SCENE VIOLENCE: {details}")
-
-    elif scene_prob >= 0.70 and not pose_detected:
-        # Higher threshold for scene-only detection to reduce false positives
-        result = "Suspected Anomaly"
-        details = f"Scene-based detection: Scene={scene_prob:.3f}(high), Pose={pose_detected}(conf={pose_confidence:.2f})"
-        print(f"🚨 TIER1 SCENE MODERATE: {details}")
-        
-    elif audio_detected and (pose_detected or scene_prob > 0.50):
-        # Audio with strong other support - higher threshold for scene support
-        result = "Suspected Anomaly"
-        details = f"Audio + support: Audio={audio_detected}(conf={audio_confidence:.2f}), Pose={pose_detected}, Scene={scene_prob:.3f}"
-        print(f"🚨 TIER1 AUDIO SUPPORTED: {details}")
-        
-    else:
-        # Normal - no strong evidence
-        result = "Normal"
-        details = f"Normal: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}(need>{scene_threshold:.2f}), Audio={audio_detected}"
-        # Only log significant cases to reduce noise
-        if scene_prob > 0.2 or pose_detected or audio_detected:
-            print(f"✅ TIER1 NORMAL (notable): {details}")
+        details = f"GOOD SCENE EVIDENCE: Scene={scene_prob:.3f}, Pose={pose_detected}"
+        print(f"🚨 TIER1 SCENE EVIDENCE: {details}")
+        return result, details
+    
+    # AUDIO-SUPPORTED DETECTION (only if audio is available)
+    if audio_available and audio_detected:
+        if pose_detected or scene_prob > 0.45:  # Lower threshold when audio supports
+            result = "Suspected Anomaly"
+            details = f"AUDIO SUPPORTED: Audio={audio_detected}(conf={audio_confidence:.2f}), Pose={pose_detected}, Scene={scene_prob:.3f}"
+            print(f"🚨 TIER1 AUDIO SUPPORTED: {details}")
+            return result, details
+    
+    # Normal case
+    result = "Normal"
+    audio_status = f"Audio={audio_detected}" if audio_available else "Audio=N/A"
+    details = f"Normal: Pose={pose_detected}(conf={pose_confidence:.2f}), Scene={scene_prob:.3f}, {audio_status}"
     
     return result, details
 
 def tier2_fusion(audio_transcript, captions, visual_anomaly_max, tier1_details, enhanced_context=None):
-    """IMPROVED Tier 2 fusion - better accuracy with cleaner AI integration"""
+    """IMPROVED Tier 2 fusion - audio-agnostic approach"""
     
-    # 1. Smart Fallback Scoring (more accurate)
-    visual_score = min(0.95, max(0.1, visual_anomaly_max * 1.5))  # Better scaling
+    # 1. Visual scoring (unchanged)
+    visual_score = min(0.95, max(0.1, visual_anomaly_max * 1.5))
     
-    # Improved audio scoring
-    audio_score = 0.1  # Default low
-    if audio_transcript and len(audio_transcript.strip()) > 5:
+    # 2. IMPROVED Audio handling - don't penalize missing audio
+    audio_available = bool(audio_transcript and len(audio_transcript.strip()) > 5)
+    audio_score = 0.0  # Neutral default
+    
+    if audio_available:
         audio_lower = audio_transcript.lower()
         critical_words = ["help", "emergency", "stop", "hurt", "pain", "911", "fire"]
         urgent_words = ["no", "please", "wait", "call", "scared", "what", "why"]
@@ -197,109 +156,122 @@ def tier2_fusion(audio_transcript, captions, visual_anomaly_max, tier1_details, 
             audio_score = 0.7
         elif len(audio_transcript) > 15:
             audio_score = 0.5
+        else:
+            audio_score = 0.3  # Neutral for normal speech
     
-    # Calculate threat level (simplified)
-    threat_level = (visual_score + audio_score) / 2
-    multimodal_agreement = min(0.9, 1.0 - abs(visual_score - audio_score))  # Better agreement calculation
+    # 3. ADAPTIVE threat calculation based on available modalities
+    if audio_available:
+        # Multi-modal: consider both visual and audio
+        threat_level = (visual_score * 0.7 + audio_score * 0.3)  # Weight visual higher
+        multimodal_agreement = min(0.9, 1.0 - abs(visual_score - audio_score))
+        text_alignment_score = 0.8 if abs(visual_score - audio_score) < 0.3 else 0.5
+    else:
+        # Visual-only: use visual score directly
+        threat_level = visual_score
+        multimodal_agreement = 0.8  # High agreement for single modality
+        text_alignment_score = 0.9   # High alignment when no conflicting audio
     
-    # 2. Smart fallback result
-    fallback_result = {
+    # 4. Build result with appropriate reasoning
+    result = {
         "visual_score": visual_score,
         "audio_score": audio_score,
-        "text_alignment_score": 0.6 if audio_transcript else 0.3,
+        "text_alignment_score": text_alignment_score,
         "multimodal_agreement": multimodal_agreement,
-        "reasoning_summary": f"Analysis: Visual={visual_score:.2f}, Audio={audio_score:.2f}, Threat={threat_level:.2f}",
         "threat_severity_index": threat_level
     }
     
-    # 3. Try AI analysis if available (simplified)
-    if groq_client is None:
-        print("⚠️ Using intelligent fallback (no AI) - Groq client not initialized")
-        fallback_result["reasoning_summary"] = "⚠️ Fallback analysis (AI unavailable): " + fallback_result["reasoning_summary"]
-        return fallback_result
+    # 5. Reasoning summary based on available data
+    if audio_available:
+        result["reasoning_summary"] = f"Multi-modal analysis: Visual={visual_score:.2f}, Audio={audio_score:.2f}, Threat={threat_level:.2f}"
+    else:
+        result["reasoning_summary"] = f"Visual-only analysis: Visual={visual_score:.2f}, Threat={threat_level:.2f} (no audio available - not penalized)"
     
-    try:
-        print("🤖 Attempting Groq AI analysis...")
-        # Build effective but simple prompt
-        visual_summary = " | ".join(captions[:3]) if captions else "No visual description"  # Limit to 3 captions
-        audio_text = audio_transcript[:200] if audio_transcript else "No audio"  # Limit audio length
-        
-        prompt = f"""You are an expert security analyst evaluating potential threats in surveillance footage. Analyze this situation thoroughly and provide detailed reasoning.
+    # 6. Try AI analysis with audio-aware prompting
+    if groq_client:
+        try:
+            visual_summary = " | ".join(captions[:3]) if captions else "No visual description"
+            audio_text = audio_transcript[:200] if audio_available else "No audio available"
+            
+            prompt = f"""You are analyzing surveillance footage for security threats.
 
-SITUATION ANALYSIS:
+SITUATION:
 - Tier 1 Detection: {tier1_details}
 - Visual Description: {visual_summary}
-- Audio Transcript: {audio_text}
-- Initial Visual Anomaly Score: {visual_anomaly_max:.2f}
+- Audio Status: {'Available: ' + audio_text if audio_available else 'No audio available (do not penalize this)'}
+- Visual Anomaly Score: {visual_anomaly_max:.2f}
 
-ANALYSIS REQUIREMENTS:
-1. Evaluate the severity of any violence, aggression, or emergency situation
-2. Consider body language, environmental context, and audio cues
-3. Assess the credibility and urgency of the threat
-4. Factor in potential false positives (normal activities misdetected)
+IMPORTANT: If no audio is available, focus entirely on visual analysis. Missing audio should NOT reduce threat assessment.
 
-Provide a comprehensive analysis as valid JSON with these exact keys:
+Provide analysis as valid JSON:
 {{
-  "visual_score": [0.0-1.0 - how concerning are the visual elements],
-  "audio_score": [0.0-1.0 - how alarming is the audio content],
-  "text_alignment_score": [0.0-1.0 - how well audio matches visual],
-  "multimodal_agreement": [0.0-1.0 - consistency between all modalities],
-  "reasoning_summary": "[Detailed 2-3 sentence analysis of what you observe and why it's concerning/normal]",
-  "threat_severity_index": [0.0-1.0 - overall threat level: 0.0-0.3=low, 0.4-0.6=medium, 0.7-1.0=high]
-}}
+  "visual_score": [0.0-1.0],
+  "audio_score": [0.0-1.0, use 0.5 if no audio available],
+  "text_alignment_score": [0.0-1.0, use 0.8-0.9 if no audio to conflict with visuals],
+  "multimodal_agreement": [0.0-1.0, use 0.8+ for single modality],
+  "reasoning_summary": "[Explain what you observe and why, note if audio unavailable]",
+  "threat_severity_index": [0.0-1.0, based on available evidence only]
+}}"""
 
-Focus on providing intelligent, context-aware analysis that explains WHAT you see and WHY it matters for security."""
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.1-8b-instant",
+                temperature=0.3,
+                max_tokens=400
+            )
+            
+            ai_output = response.choices[0].message.content.strip()
+            json_start = ai_output.find('{')
+            json_end = ai_output.rfind('}') + 1
+            
+            if json_start >= 0 and json_end > json_start:
+                json_str = ai_output[json_start:json_end]
+                ai_result = json.loads(json_str)
+                
+                # Validate and sanitize
+                required_keys = ["visual_score", "audio_score", "text_alignment_score", 
+                               "multimodal_agreement", "reasoning_summary", "threat_severity_index"]
+                
+                if all(key in ai_result for key in required_keys):
+                    for key in required_keys[:-1]:  # All except reasoning_summary
+                        if key != "reasoning_summary":
+                            ai_result[key] = min(1.0, max(0.0, float(ai_result[key])))
+                    
+                    ai_result["reasoning_summary"] = "🤖 AI Analysis: " + str(ai_result["reasoning_summary"])
+                    print(f"✅ AI analysis complete: threat={ai_result['threat_severity_index']:.2f}")
+                    return ai_result
+            
+            print("⚠ AI analysis failed, using fallback")
+            
+        except Exception as ai_error:
+            print(f"🤖 AI error: {ai_error}")
+    
+    # Return fallback result
+    result["reasoning_summary"] = "⚠ Fallback analysis: " + result["reasoning_summary"]
+    return result
 
-        response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",  # Updated to currently supported model
-            temperature=0.3,  # Slightly higher for more detailed analysis
-            max_tokens=400    # More tokens for detailed reasoning
-        )
-        
-        print("✅ Groq API call successful, parsing response...")
-        ai_output = response.choices[0].message.content.strip()
-        print(f"🤖 Raw AI response: {ai_output[:100]}...")
-        
-        # Robust JSON extraction
-        json_start = ai_output.find('{')
-        json_end = ai_output.rfind('}') + 1
-        
-        if json_start >= 0 and json_end > json_start:
-            json_str = ai_output[json_start:json_end]
-            ai_result = json.loads(json_str)
-            
-            # Quick validation and sanitization
-            required_keys = ["visual_score", "audio_score", "text_alignment_score", 
-                           "multimodal_agreement", "reasoning_summary", "threat_severity_index"]
-            
-            if all(key in ai_result for key in required_keys):
-                # Clamp numeric values to valid range
-                for key in ["visual_score", "audio_score", "text_alignment_score", 
-                           "multimodal_agreement", "threat_severity_index"]:
-                    if isinstance(ai_result[key], (int, float)):
-                        ai_result[key] = min(1.0, max(0.0, float(ai_result[key])))
-                    else:
-                        ai_result[key] = fallback_result[key]
-                
-                # Ensure reasoning is valid
-                if not isinstance(ai_result["reasoning_summary"], str) or len(ai_result["reasoning_summary"]) < 5:
-                    ai_result["reasoning_summary"] = fallback_result["reasoning_summary"]
-                
-                print(f"✅ AI analysis complete: threat={ai_result['threat_severity_index']:.2f}")
-                ai_result["reasoning_summary"] = "🤖 AI Analysis: " + ai_result["reasoning_summary"]
-                return ai_result
-            else:
-                print(f"⚠️ Missing required keys in AI response: {list(ai_result.keys())}")
-        else:
-            print(f"⚠️ No valid JSON found in AI response")
-        
-        print(f"⚠️ Invalid AI response format, using fallback")
-        fallback_result["reasoning_summary"] = "⚠️ Fallback analysis (AI format error): " + fallback_result["reasoning_summary"]
-        return fallback_result
-            
-    except Exception as ai_error:
-        print(f"🤖 AI error: {ai_error}")
-        print(f"📋 AI error details: {traceback.format_exc()}")
-        fallback_result["reasoning_summary"] = f"⚠️ Fallback analysis (AI error: {str(ai_error)[:50]}): " + fallback_result["reasoning_summary"]
-        return fallback_result
+
+# Example usage demonstration
+if __name__ == "__main__":
+    # Test case: High visual score, no audio
+    print("=== TEST: High Visual Score (0.87), No Audio ===")
+    
+    # Simulate high visual detection
+    pose_summary = "Anomaly detected: true - rapid movement detected"
+    audio_summary = None  # No audio available
+    scene_summary = "Scene anomaly probability: 0.73"
+    
+    # Tier 1
+    tier1_result, tier1_details = tier1_fusion(pose_summary, audio_summary, scene_summary)
+    print(f"Tier 1 Result: {tier1_result}")
+    print(f"Tier 1 Details: {tier1_details}")
+    
+    # Tier 2
+    tier2_result = tier2_fusion(
+        audio_transcript=None,
+        captions=["Person making aggressive gestures", "Rapid movement detected"],
+        visual_anomaly_max=0.87,
+        tier1_details=tier1_details
+    )
+    
+    print(f"Tier 2 Threat Level: {tier2_result['threat_severity_index']:.2f}")
+    print(f"Tier 2 Reasoning: {tier2_result['reasoning_summary']}")
