@@ -1,10 +1,12 @@
 ## 🚨 Real-Time Anomaly Detection System
-# Team : QuadFusion
+
+# Samsung GenAI hackathon 2025
+# Team : TriFusion
 Team members :
 
-1.Samrudh P : 1ms23cs162@msrit.edu
-2.Sagar S R : 1ms23cs158&msrit.edu
-3.Ranjita V Nayak : 1ms23cs150@msrit.edu
+- 1.Samrudh P : 1ms23cs162@msrit.edu
+- 2.Sagar S R : 1ms23cs158@msrit.edu
+- 3.Ranjita V Nayak : 1ms23cs150@msrit.edu
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.112.0-green.svg)](https://fastapi.tiangolo.com)
