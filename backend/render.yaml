@@ -1,0 +1,15 @@
+services:
+  # Backend API Service on Render
+  - type: web
+    name: anomaly-detection-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # Set this in Render dashboard
+      - key: CORS_ORIGINS
+        value: https://anomaly-detection-frontend.vercel.app
+    autoDeploy: true

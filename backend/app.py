@@ -140,6 +140,17 @@ async def close_mongodb_connection():
 
 app = FastAPI()
 
+# Health check endpoint for Render
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render deployment"""
+    return {
+        "status": "healthy",
+        "service": "anomaly-detection-backend",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    }
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,

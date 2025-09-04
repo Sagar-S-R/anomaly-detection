@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiUrl } from '../config/api';
 
 const Login = ({ onLogin, onGoToRegister }) => {
   const [username, setUsername] = useState('');
@@ -12,7 +13,7 @@ const Login = ({ onLogin, onGoToRegister }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8000/api/login', {
+      const response = await fetch(getApiUrl('/api/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

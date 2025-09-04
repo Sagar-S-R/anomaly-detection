@@ -1748,7 +1748,12 @@
             displayAnomalyFrames();
             
             // Connect WebSocket to dashboard_app.py
-            ws = new WebSocket('ws://localhost:8001/stream_video?username=dashboard_user');
+            // Dynamic WebSocket URL for deployment
+            const isProduction = window.location.protocol === 'https:';
+            const wsProtocol = isProduction ? 'wss:' : 'ws:';
+            const wsHost = window.location.host || 'localhost:8000';
+            
+            ws = new WebSocket(`${wsProtocol}//${wsHost}/stream_video?username=dashboard_user`);
             
             ws.onopen = function(event) {
                 console.log('✅ WebSocket connected to dashboard_app.py');

@@ -15,21 +15,42 @@ import DatabaseManager from './components/DatabaseManager';
 import VideoUploadMonitoring from './pages/VideoUploadMonitoring';
 import './index.css';
 
+// Debug/Demo mode - set to true to skip login
+const DEMO_MODE = false; // Change to true to skip authentication
+
 function App() {
   // Authentication state
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('login'); // 'login', 'register', 'welcome', 'dashboard', 'input-selector', 'upload-monitoring', 'cctv-monitoring', 'monitoring'
+  const [isLoading, setIsLoading] = useState(true); // Add loading state for auth check
   
-  // Debug/Demo mode - set to true to skip login
-  const DEMO_MODE = false; // Change to true to skip authentication
-  
-  // Initialize demo user if in demo mode
+  // Check for persistent authentication on app load
   useEffect(() => {
-    if (DEMO_MODE && !user) {
-      setUser({ username: 'demo_user', timestamp: new Date() });
-      setCurrentPage('input-selector');
-    }
-  }, [DEMO_MODE, user]);
+    const checkAuthState = () => {
+      if (DEMO_MODE) {
+        setUser({ username: 'demo_user', timestamp: new Date() });
+        setCurrentPage('input-selector');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+          const userData = JSON.parse(savedUser);
+          setUser(userData);
+          setCurrentPage('dashboard'); // Navigate to dashboard if authenticated
+        }
+      } catch (error) {
+        console.error('Error loading auth state:', error);
+        localStorage.removeItem('user'); // Clear invalid data
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuthState();
+  }, []); // Run only once on mount
   
   // Main state management
   const [isConnected, setIsConnected] = useState(false);
@@ -55,6 +76,8 @@ function App() {
   // Authentication handlers
   const handleLogin = (userData) => {
     setUser(userData);
+    // Save to localStorage for persistence
+    localStorage.setItem('user', JSON.stringify(userData));
     setCurrentPage('welcome');
   };
 
@@ -73,6 +96,8 @@ function App() {
 
   const handleLogout = () => {
     setUser(null);
+    // Remove from localStorage
+    localStorage.removeItem('user');
     setCurrentPage('login');
     // Clean up any WebSocket connections
     if (ws) {
@@ -652,6 +677,18 @@ function App() {
   };
 
   // Render based on current page
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400 mx-auto mb-4"></div>
+          <p className="text-cyan-400 font-mono">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (currentPage === 'login') {
     return <Login onLogin={handleLogin} onGoToRegister={handleGoToRegister} />;
   }
