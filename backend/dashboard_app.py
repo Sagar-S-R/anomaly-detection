@@ -95,6 +95,7 @@ app = FastAPI(title="Backend Dashboard API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://anomaly-detection-wine.vercel.app/",
         "http://localhost:8001",    # Dashboard server
         "http://127.0.0.1:8001",    # Dashboard server
         "http://localhost:3000",    # Frontend

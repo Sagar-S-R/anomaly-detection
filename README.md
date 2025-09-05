@@ -330,8 +330,7 @@ chunk_size = 1024           # Audio chunk size
 - **Real-time processing** at 30 FPS with 1 FPS anomaly analysis
 
 ### 🎤 Audio Processing
-- **OpenAI Whisper Tiny** - Fast transcription for Tier 1
-- **OpenAI Whisper Large** - Accurate transcription for Tier 2
+- **OpenAI Whisper Tiny** - Fast transcription for real-time processing
 
 ### 👁️ Visual Analysis
 - **CLIP ViT-Base-Patch32** - Scene classification and anomaly detection

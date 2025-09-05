@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OPTIMIZED Pre-load and cache all AI models for the Anomaly Detection System
+Optimized script to download and cache all AI models for the Anomaly Detection System
 This script downloads and initializes all required models during container build
 """
 
@@ -15,8 +15,9 @@ import cv2
 import numpy as np
 
 def setup_model_cache_dir():
-    """Setup model cache directory"""
-    cache_dir = "/app/model_cache"
+    """Setup model cache directory optimized for Azure VM"""
+    # Use Azure VM standard paths
+    cache_dir = os.path.expanduser("~/model_cache")
     os.makedirs(cache_dir, exist_ok=True)
     
     # Set environment variables for model caching
@@ -25,7 +26,7 @@ def setup_model_cache_dir():
     os.environ['HF_HOME'] = cache_dir
     os.environ['WHISPER_CACHE_DIR'] = cache_dir
     
-    print(f"📁 Model cache directory: {cache_dir}")
+    print(f"📁 Azure VM Model cache directory: {cache_dir}")
     return cache_dir
 
 def download_transformers_models():
@@ -34,11 +35,9 @@ def download_transformers_models():
     start_time = time.time()
     
     models_to_download = [
-        # CLIP Models for scene analysis
+        # CLIP Model for scene analysis (Tier 1)
         ("openai/clip-vit-base-patch32", CLIPModel, AutoProcessor),
-        ("openai/clip-vit-large-patch14", CLIPModel, AutoProcessor),
-        
-        # BLIP Model for image captioning
+        # BLIP Model for image captioning (Tier 2)
         ("Salesforce/blip-image-captioning-base", BlipForConditionalGeneration, BlipProcessor),
     ]
     
@@ -64,7 +63,7 @@ def download_whisper_models():
     """Download Whisper models"""
     print("🎵 Downloading Whisper models...")
     
-    whisper_models = ["tiny", "base", "small", "medium", "large"]
+    whisper_models = ["tiny"]
     
     for model_name in whisper_models:
         try:
@@ -149,17 +148,18 @@ def main():
     cache_dir = setup_model_cache_dir()
     print(f"📁 Model cache directory: {cache_dir}")
     
-    # Download all models
-    download_transformers_models()
-    download_whisper_models()
-    download_mediapipe_models()
+    # Download all models (optimized for your usage)
+    download_transformers_models()  # CLIP base 32 + BLIP
+    download_whisper_models()       # Whisper tiny only
+    download_mediapipe_models()     # Pose detection
     
     # Test model loading
     test_model_loading()
     
     print("\n🎉 All AI models have been pre-loaded successfully!")
-    print("📦 Models are cached and ready for immediate use")
-    print("⚡ Container startup will be much faster now")
+    print("📦 Models cached: CLIP base-32, BLIP, Whisper tiny, MediaPipe")
+    print("⚡ Optimized for Standard_B2s (4GB RAM) - all models preloaded")
+    print("🚀 Container startup will be much faster now")
     
     # Display cache size
     try:

@@ -60,7 +60,7 @@ def download_whisper_models():
     """Download Whisper models"""
     print("🎵 Downloading Whisper models...")
     
-    whisper_models = ["tiny", "base", "small", "medium", "large"]
+    whisper_models = ["tiny", "base", "small", "medium"]
     
     for model_name in whisper_models:
         try:

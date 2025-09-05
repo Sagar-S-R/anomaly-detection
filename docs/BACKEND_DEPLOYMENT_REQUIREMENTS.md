@@ -22,7 +22,7 @@
   - CLIP ViT-Large-Patch14: ~1.2 GB
   - BLIP Image Captioning: ~1.0 GB
   - Whisper Tiny: ~39 MB
-  - Whisper Large: ~1.5 GB
+  - Whisper Tiny: ~150 MB (optimized for Standard_B2s)
   - PyTorch Runtime: ~1-2 GB
 - **Video Processing Buffer**: 1-2 GB
 - **Audio Processing Buffer**: 500 MB
