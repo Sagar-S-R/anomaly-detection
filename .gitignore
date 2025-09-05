@@ -1,3 +1,7 @@
+# Azure deployment documentation (contains sensitive info)
+AZURE_README.md
+docs/AZURE_README.md
+
 # Environment variables
 .env
 .env.local
