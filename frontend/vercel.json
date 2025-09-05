@@ -19,13 +19,13 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "https://anomaly-detection-backend.onrender.com",
-    "REACT_APP_WS_URL": "wss://anomaly-detection-backend.onrender.com"
+    "REACT_APP_API_URL": "https://your-backend-app.azurewebsites.net",
+    "REACT_APP_WS_URL": "wss://your-backend-app.azurewebsites.net"
   },
   "build": {
     "env": {
-      "REACT_APP_API_URL": "https://anomaly-detection-backend.onrender.com",
-      "REACT_APP_WS_URL": "wss://anomaly-detection-backend.onrender.com"
+      "REACT_APP_API_URL": "https://your-backend-app.azurewebsites.net",
+      "REACT_APP_WS_URL": "wss://your-backend-app.azurewebsites.net"
     }
   }
 }
