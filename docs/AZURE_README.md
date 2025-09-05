@@ -108,6 +108,28 @@ curl -k https://172.200.121.141/api/health
 
 ## 💰 Cost Management
 
+### Budget-Based Auto-Shutdown
+- **Budget Limit**: $30.00 USD per month
+- **Monitoring Script**: `cost-monitor.sh`
+- **Action Group**: `budget-shutdown-action`
+- **Automation Account**: `budget-automation`
+
+#### Run Cost Monitor
+```bash
+# Check current costs and shutdown if over $30
+./cost-monitor.sh
+
+# Or run manually
+bash cost-monitor.sh
+```
+
+#### Cost Monitoring Features
+- ✅ **Real-time cost estimation**
+- ✅ **Automatic shutdown** when over budget
+- ✅ **Email notifications**
+- ✅ **VM status checking**
+- ✅ **Detailed cost breakdown**
+
 ### Check Usage
 ```bash
 # VM creation time
