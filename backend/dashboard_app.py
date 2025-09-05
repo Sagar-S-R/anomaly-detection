@@ -24,6 +24,7 @@ import io
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 # Import audio processing functions
 from utils.audio_processing import chunk_and_transcribe_tiny
@@ -90,7 +91,21 @@ from dashboard_mode import dashboard_mode
 
 app = FastAPI(title="Backend Dashboard API")
 
-# Simple session management for dashboard only
+# Add CORS middleware for dashboard
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8001",    # Dashboard server
+        "http://127.0.0.1:8001",    # Dashboard server
+        "http://localhost:3000",    # Frontend
+        "http://127.0.0.1:3000",    # Frontend
+        "http://localhost:8000",    # Alternative port
+        "http://127.0.0.1:8000"     # Alternative port
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 class DashboardSession:
     def __init__(self):
         self.session_id = None
