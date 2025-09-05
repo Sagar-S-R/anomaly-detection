@@ -226,7 +226,103 @@ GROQ_API_KEY=your_groq_api_key_here
 - Verify network connectivity for WebSocket connections
 - Ensure all dependencies are properly installed
 
-## 🔮 Future Enhancements
+## � Deployment Guide
+
+### 📋 Prerequisites
+- Azure account for backend deployment
+- Vercel account for frontend deployment
+- GitHub repository with your code
+
+### 🔧 Environment Configuration
+
+#### 1. Frontend Environment Setup
+Create/update `.env` file in `frontend/` directory:
+```bash
+# For local development
+REACT_APP_API_URL=http://localhost:8000
+REACT_APP_WS_URL=ws://localhost:8000
+
+# For production (update after Azure deployment)
+# REACT_APP_API_URL=https://your-azure-app.azurewebsites.net
+# REACT_APP_WS_URL=wss://your-azure-app.azurewebsites.net
+```
+
+#### 2. Production Build Test
+```bash
+cd frontend
+npm run build
+# Should output: "Compiled successfully" with file sizes
+```
+
+### 🌐 Deployment Steps
+
+#### Step 1: Deploy Backend to Azure
+1. **Prepare Backend**: Follow `BACKEND_DEPLOYMENT_REQUIREMENTS.md`
+2. **Deploy to Azure Web Apps**: 
+   - Create Azure Web App with Python runtime
+   - Configure environment variables
+   - Deploy from GitHub or ZIP
+3. **Note your Azure URL**: `https://your-app-name.azurewebsites.net`
+
+#### Step 2: Update Frontend Configuration
+After backend deployment, update TWO files:
+
+**Update `.env`:**
+```bash
+REACT_APP_API_URL=https://your-actual-azure-url.azurewebsites.net
+REACT_APP_WS_URL=wss://your-actual-azure-url.azurewebsites.net
+```
+
+**Update `vercel.json`:**
+```json
+{
+  "env": {
+    "REACT_APP_API_URL": "https://your-actual-azure-url.azurewebsites.net",
+    "REACT_APP_WS_URL": "wss://your-actual-azure-url.azurewebsites.net"
+  }
+}
+```
+
+#### Step 3: Deploy Frontend to Vercel
+
+**Option A: Vercel CLI**
+```bash
+cd frontend
+npm install -g vercel
+vercel --prod
+```
+
+**Option B: GitHub Integration**
+1. Connect GitHub repo to Vercel
+2. Set **Root Directory** to `frontend`
+3. Framework: `Create React App`
+4. Build Command: `npm run build`
+5. Output Directory: `build`
+
+### ✅ Deployment Checklist
+- [ ] Backend deployed to Azure
+- [ ] Azure URL obtained
+- [ ] `.env` updated with Azure URL
+- [ ] `vercel.json` updated with Azure URL
+- [ ] Frontend builds successfully (`npm run build`)
+- [ ] Frontend deployed to Vercel
+- [ ] Test live application end-to-end
+
+### 🔍 Post-Deployment Testing
+1. **Frontend loads correctly**
+2. **Login/Register works**
+3. **WebSocket connection establishes**
+4. **Video upload processes successfully**
+5. **Live monitoring functions properly**
+
+### 💡 Deployment Tips
+- **Environment Variables**: Vercel reads from `vercel.json` for production
+- **Build Folder**: Vercel automatically serves from `build/` directory
+- **SPA Routing**: `vercel.json` handles React Router correctly
+- **CORS**: Ensure Azure backend allows Vercel frontend domain
+- **WebSocket**: Use `wss://` (secure) for production WebSocket connections
+
+## �🔮 Future Enhancements
 
 ### Planned Features
 - [ ] WebRTC video streaming for lower latency
