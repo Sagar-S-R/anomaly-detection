@@ -6,14 +6,14 @@ import json
 import traceback
 import time
 
-def run_tier2_continuous(frame, audio_chunk_path, tier1_result):
+def run_tier2_continuous(frame, audio_input, tier1_result):
     """Enhanced Tier 2 analysis with anomaly type detection and better reasoning"""
     try:
         # Structured logging for Tier 2 start
         tier2_log = {
             "component": "tier2_pipeline",
             "phase": "start",
-            "audio_available": bool(audio_chunk_path),
+            "audio_available": bool(audio_input),
             "frame_available": frame is not None,
             "tier1_anomaly": tier1_result.get("result", "unknown")
         }
@@ -155,7 +155,7 @@ def run_tier2_continuous(frame, audio_chunk_path, tier1_result):
                 "audio_analysis": {
                     "full_transcript": full_transcript,
                     "audio_indicators": audio_indicators,
-                    "available": bool(audio_chunk_path),
+                    "available": bool(audio_input),
                     "length": len(full_transcript) if full_transcript else 0
                 },
                 "visual_analysis": {
@@ -215,7 +215,7 @@ def run_tier2_continuous(frame, audio_chunk_path, tier1_result):
                     "audio_analysis": {
                         "full_transcript": full_transcript,
                         "audio_indicators": audio_indicators,
-                        "available": bool(audio_chunk_path),
+                        "available": bool(audio_input),
                         "length": len(full_transcript) if full_transcript else 0
                     },
                     "visual_analysis": {

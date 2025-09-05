@@ -135,14 +135,9 @@ const UserDashboard = ({ user, onLogout, onStartMonitoring }) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black cyber-grid-bg flex items-center justify-center">
-        <div className="text-center scale-in">
-          <div className="cyber-spinner mx-auto mb-6"></div>
-          <p className="text-cyan-400 font-mono text-lg text-cyber-glow">Loading Dashboard...</p>
-          <div className="mt-4 flex justify-center gap-2">
-            <div className="w-2 h-2 bg-cyan-400 rounded-full pulse-dot"></div>
-            <div className="w-2 h-2 bg-cyan-400 rounded-full pulse-dot" style={{animationDelay: '0.2s'}}></div>
-            <div className="w-2 h-2 bg-cyan-400 rounded-full pulse-dot" style={{animationDelay: '0.4s'}}></div>
-          </div>
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-cyan-400 font-mono">Loading Dashboard...</p>
         </div>
       </div>
     );
@@ -150,48 +145,33 @@ const UserDashboard = ({ user, onLogout, onStartMonitoring }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black cyber-grid-bg">
-      {/* Enhanced Background Effects */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-400/3 rounded-full blur-3xl animate-pulse floating"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-400/3 rounded-full blur-3xl animate-pulse floating" style={{animationDelay: '1s'}}></div>
-      </div>
-      
-      <div className="container-cyber section-spacing relative z-10">
+      <div className="container mx-auto px-6 py-8">
         
-        {/* Enhanced Header */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 reveal-up">
-          <div className="space-y-2">
-            <h1 className="cyber-title text-3xl">USER DASHBOARD</h1>
-            <p className="cyber-subtitle mt-2">Welcome back, <span className="text-gradient font-semibold">{dashboardData?.user?.full_name || user.username}</span></p>
-            <div className="flex items-center gap-3 mt-3">
-              <div className="w-3 h-3 bg-green-400 rounded-full pulse-dot"></div>
-              <span className="text-green-400 text-sm font-mono">System Online</span>
-            </div>
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-cyan-400 font-mono">USER DASHBOARD</h1>
+            <p className="text-gray-400 font-mono mt-2">Welcome back, {dashboardData?.user?.full_name || user.username}</p>
           </div>
           <div className="flex gap-4">
             <button
               onClick={onStartMonitoring}
-              className="cyber-btn cyber-btn-green interactive-hover"
+              className="px-6 py-3 bg-green-500/20 border border-green-400/40 text-green-400 rounded-xl font-mono font-bold tracking-wider uppercase transition-all duration-300 hover:bg-green-500/30"
             >
-              ⚡ START MONITORING
+              START MONITORING
             </button>
             <button
               onClick={onLogout}
-              className="cyber-btn cyber-btn-red interactive-hover"
+              className="px-6 py-3 bg-red-500/20 border border-red-400/40 text-red-400 rounded-xl font-mono font-bold tracking-wider uppercase transition-all duration-300 hover:bg-red-500/30"
             >
-              🚪 LOGOUT
+              LOGOUT
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-gradient-to-r from-red-500/10 to-pink-500/10 border border-red-400/30 rounded-xl reveal-up">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <p className="text-red-300 font-medium">{error}</p>
-            </div>
+          <div className="mb-6 p-4 bg-red-500/20 border border-red-400/40 rounded-xl">
+            <p className="text-red-400 font-mono">{error}</p>
           </div>
         )}
 

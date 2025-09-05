@@ -1298,8 +1298,8 @@
                     <button class="cyber-btn info-btn" onclick="exportData()">
                         💾 EXPORT SESSION
                     </button>
-                    <button class="cyber-btn info-btn" onclick="showSystemStats()">
-                        📈 SYSTEM STATS
+                    <button class="cyber-btn info-btn" onclick="checkCameraStatus()">
+                        🔍 CHECK CAMERA STATUS
                     </button>
                     <button class="cyber-btn start-btn" onclick="testPipelineCard()" style="margin-top: 10px;">
                         🧪 TEST PIPELINE CARD
@@ -1397,6 +1397,15 @@
         let reconnectionAttempts = 0;
         let maxReconnectionAttempts = 5;
         let baseReconnectionDelay = 3000; // 3 seconds
+        
+        // 🎤 BROWSER AUDIO VARIABLES
+        let audioContext = null;
+        let audioStream = null;
+        let audioProcessor = null;
+        let audioChunks = [];
+        let isRecordingAudio = false;
+        let audioInterval = null;
+        
         let pingInterval = null; // Keepalive ping interval
         let lastPingTime = 0; // Track last ping sent
         let lastPongTime = 0; // Track last pong received
@@ -1457,7 +1466,12 @@
                         height: { ideal: 480 },
                         frameRate: { ideal: 10 }
                     },
-                    audio: false  // We'll handle audio separately if needed
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
                 });
                 
                 browserVideo = document.createElement('video');
@@ -1467,12 +1481,73 @@
                 
                 console.log('✅ Browser camera started successfully');
                 
+                // 🎤 SETUP AUDIO CAPTURE
+                try {
+                    await setupAudioCapture();
+                    console.log('✅ Browser audio capture started successfully');
+                } catch (audioError) {
+                    console.warn('⚠️ Audio capture failed, continuing with video only:', audioError);
+                }
+                
                 // Start sending frames to server
                 startFrameStreaming();
                 
             } catch (error) {
                 console.error('❌ Browser camera access denied:', error);
                 alert('Camera access is required for live monitoring. Please grant permission and try again.');
+                throw error;
+            }
+        }
+
+        // 🎤 AUDIO CAPTURE FUNCTIONS
+        async function setupAudioCapture() {
+            try {
+                // Get audio track from the browser stream
+                const audioTracks = browserStream.getAudioTracks();
+                if (audioTracks.length === 0) {
+                    throw new Error('No audio track available');
+                }
+                
+                // Create AudioContext for processing
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Create media stream source from audio track
+                const audioSource = audioContext.createMediaStreamSource(browserStream);
+                
+                // Create ScriptProcessor for audio chunks
+                audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                // Set up audio processing
+                audioProcessor.onaudioprocess = (event) => {
+                    if (isRecordingAudio) {
+                        const inputBuffer = event.inputBuffer;
+                        const inputData = inputBuffer.getChannelData(0);
+                        
+                        // Convert to 16-bit PCM
+                        const pcmData = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+                        }
+                        
+                        // Store audio chunk
+                        audioChunks.push(new Uint8Array(pcmData.buffer));
+                        
+                        // Keep only last 2 seconds of audio (16000 samples/sec * 2)
+                        if (audioChunks.length > 32) { // ~2 seconds at 4096 samples/chunk
+                            audioChunks.shift();
+                        }
+                    }
+                };
+                
+                // Connect audio processing chain
+                audioSource.connect(audioProcessor);
+                audioProcessor.connect(audioContext.destination);
+                
+                isRecordingAudio = true;
+                console.log('🎤 Audio capture initialized successfully');
+                
+            } catch (error) {
+                console.error('❌ Audio capture setup failed:', error);
                 throw error;
             }
         }
@@ -1497,12 +1572,24 @@
                         const frameData = canvas.toDataURL('image/jpeg', 0.8);
                         const base64Frame = frameData.split(',')[1];
                         
-                        // Send to server
+                        // 🎤 Get current audio data
+                        let audioData = null;
+                        if (audioChunks.length > 0) {
+                            // Combine recent audio chunks
+                            const combinedAudio = new Uint8Array(audioChunks.flatMap(chunk => Array.from(chunk)));
+                            audioData = btoa(String.fromCharCode(...combinedAudio));
+                        }
+                        
+                        // Send to server with audio
                         ws.send(JSON.stringify({
                             type: 'video_frame',
                             frame: base64Frame,
+                            audio: audioData,
                             timestamp: Date.now()
                         }));
+                        
+                        // Clear processed audio chunks to prevent memory buildup
+                        audioChunks.length = 0;
                         
                     } catch (error) {
                         console.error('❌ Error sending frame:', error);
@@ -1514,18 +1601,60 @@
         }
 
         function stopBrowserCamera() {
+            console.log('🛑 Stopping browser camera and audio...');
+            
+            // Stop frame streaming interval
             if (frameInterval) {
                 clearInterval(frameInterval);
                 frameInterval = null;
+                console.log('✅ Frame streaming stopped');
             }
             
+            // Stop audio processing
+            isRecordingAudio = false;
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor = null;
+                console.log('✅ Audio processor stopped');
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close().then(() => {
+                    console.log('✅ Audio context closed');
+                }).catch(err => {
+                    console.warn('⚠️ Error closing audio context:', err);
+                });
+                audioContext = null;
+            }
+            
+            // Stop all media tracks
             if (browserStream) {
-                browserStream.getTracks().forEach(track => track.stop());
-                browserStream = null;
+                try {
+                    const tracks = browserStream.getTracks();
+                    console.log(`🛑 Stopping ${tracks.length} media tracks...`);
+                    
+                    tracks.forEach((track, index) => {
+                        console.log(`🛑 Stopping track ${index + 1}: ${track.kind} (${track.label})`);
+                        track.stop();
+                    });
+                    
+                    browserStream = null;
+                    console.log('✅ All media tracks stopped');
+                } catch (error) {
+                    console.error('❌ Error stopping media tracks:', error);
+                }
             }
             
-            browserVideo = null;
-            console.log('🛑 Browser camera stopped');
+            // Clear video element
+            if (browserVideo) {
+                browserVideo.srcObject = null;
+                browserVideo = null;
+                console.log('✅ Video element cleared');
+            }
+            
+            // Clear audio chunks
+            audioChunks.length = 0;
+            
+            console.log('🛑 Browser camera and audio fully stopped');
         }
 
         // 🎥 CONTINUOUS FRAME PROCESSING FUNCTIONS
@@ -1987,8 +2116,21 @@
                 // Stop browser camera when WebSocket closes
                 stopBrowserCamera();
                 
-                // Clear keepalive ping
+                // Stop WebSocket keepalive
                 stopWebSocketPing();
+                
+                // Clear canvas
+                const canvas = document.getElementById('liveVideoCanvas');
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#ff0040';
+                    ctx.font = '18px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('DISCONNECTED', canvas.width / 2, canvas.height / 2);
+                }
                 
                 // Auto-reconnect with exponential backoff if it wasn't a manual disconnect
                 if (event.code !== 1000 && reconnectionAttempts < maxReconnectionAttempts) {
@@ -2066,22 +2208,128 @@
             }
         }
 
+        function checkCameraStatus() {
+            console.log('🔍 Checking camera status...');
+            
+            let status = {
+                browserStream: !!browserStream,
+                browserVideo: !!browserVideo,
+                frameInterval: !!frameInterval,
+                audioContext: !!audioContext,
+                audioProcessor: !!audioProcessor,
+                isRecordingAudio: isRecordingAudio,
+                tracks: []
+            };
+            
+            // Check media tracks
+            if (browserStream) {
+                try {
+                    const tracks = browserStream.getTracks();
+                    status.tracks = tracks.map(track => ({
+                        kind: track.kind,
+                        label: track.label,
+                        readyState: track.readyState,
+                        enabled: track.enabled
+                    }));
+                } catch (error) {
+                    status.tracks = [{ error: error.message }];
+                }
+            }
+            
+            console.log('📊 Camera status:', status);
+            
+            // Check if camera is actually closed
+            const isCameraActive = status.browserStream || status.browserVideo || status.frameInterval;
+            const isAudioActive = status.audioContext || status.audioProcessor || status.isRecordingAudio;
+            
+            let message = '🔍 CAMERA STATUS CHECK:\n\n';
+            
+            if (status.tracks.length > 0) {
+                message += `📹 Active Tracks: ${status.tracks.length}\n`;
+                status.tracks.forEach((track, i) => {
+                    message += `  ${i + 1}. ${track.kind}: ${track.label} (${track.readyState})\n`;
+                });
+            } else {
+                message += '📹 No active media tracks\n';
+            }
+            
+            message += '\n';
+            message += `🎥 Video Stream: ${status.browserStream ? 'ACTIVE' : 'CLOSED'}\n`;
+            message += `🎤 Audio Context: ${status.audioContext ? 'ACTIVE' : 'CLOSED'}\n`;
+            message += `🔄 Frame Interval: ${status.frameInterval ? 'RUNNING' : 'STOPPED'}\n`;
+            message += `🎙️ Audio Recording: ${status.isRecordingAudio ? 'ACTIVE' : 'STOPPED'}\n`;
+            
+            if (!isCameraActive && !isAudioActive) {
+                message += '\n✅ Camera and audio are fully closed and released!';
+                console.log('✅ Camera and audio are fully closed');
+            } else {
+                message += '\n⚠️ Some camera/audio components may still be active';
+                console.warn('⚠️ Camera/Audio still active:', {
+                    camera: isCameraActive,
+                    audio: isAudioActive,
+                    details: status
+                });
+            }
+            
+            alert(message);
+            return !isCameraActive && !isAudioActive;
+        }
+        
+        // Add camera status check to stopMonitoring
         function stopMonitoring() {
             console.log('🛑 stopMonitoring() function called!');
             
-            // Stop browser camera
-            stopBrowserCamera();
-            
-            // Stop WebSocket keepalive
-            stopWebSocketPing();
-            
-            if (ws) {
-                ws.close(1000, 'User stopped monitoring');
-                ws = null;
+            try {
+                // Stop browser camera and audio
+                stopBrowserCamera();
+                
+                // Stop WebSocket keepalive
+                stopWebSocketPing();
+                
+                // Close WebSocket connection
+                if (ws) {
+                    console.log('🔌 Closing WebSocket connection...');
+                    ws.close(1000, 'User stopped monitoring');
+                    ws = null;
+                }
+                
+                // Update UI status
+                updateConnectionStatus(false);
+                document.getElementById('detectionStatus').textContent = 'Status: 🛑 MONITORING STOPPED';
+                document.getElementById('detectionStatus').className = 'status normal';
+                document.getElementById('currentReasoning').textContent = 'Monitoring stopped - camera and audio fully released';
+                
+                // Clear canvas
+                const canvas = document.getElementById('liveVideoCanvas');
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#00ffff';
+                    ctx.font = '20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('MONITORING STOPPED', canvas.width / 2, canvas.height / 2);
+                }
+                
+                // Check camera status after a short delay
+                setTimeout(() => {
+                    const isClosed = checkCameraStatus();
+                    if (isClosed) {
+                        console.log('✅ Camera successfully closed');
+                        alert('✅ Monitoring stopped successfully!\n\nCamera and microphone have been fully released.\n\nYou can safely close this browser tab or start monitoring again.');
+                    } else {
+                        console.warn('⚠️ Camera may still be active');
+                        alert('⚠️ Monitoring stopped, but camera cleanup may be incomplete.\n\nPlease refresh the page to ensure camera is fully released.');
+                    }
+                }, 1000);
+                
+                console.log('🛑 Monitoring fully stopped - camera and audio released');
+                
+            } catch (error) {
+                console.error('❌ Error stopping monitoring:', error);
+                alert('❌ Error stopping monitoring. Please refresh the page if issues persist.');
             }
-            
-            updateConnectionStatus(false);
-            console.log('🛑 Monitoring stopped');
         }
 
         // Filter functions handled by button onclick events via setFrameFilter()

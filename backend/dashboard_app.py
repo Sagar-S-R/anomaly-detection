@@ -17,10 +17,57 @@ from typing import Dict, List
 import queue
 import threading
 import numpy as np
+import wave
+import os
+import io
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+# Import audio processing functions
+from utils.audio_processing import chunk_and_transcribe_tiny
+
+def process_browser_audio(audio_b64):
+    """Process base64 encoded audio data from browser"""
+    try:
+        if not audio_b64:
+            return ""
+            
+        # Decode base64 audio data
+        audio_bytes = base64.b64decode(audio_b64)
+        
+        # Create temporary WAV file from raw PCM data
+        # Browser sends 16-bit PCM at 16kHz mono (from setupAudioCapture)
+        temp_dir = os.path.join(os.path.dirname(__file__), 'temp_audio')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        temp_path = os.path.join(temp_dir, f"browser_audio_{int(time.time() * 1000)}.wav")
+        
+        # Write WAV file with proper header
+        with wave.open(temp_path, 'wb') as wf:
+            wf.setnchannels(1)  # Mono
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(16000)  # 16kHz
+            wf.writeframes(audio_bytes)
+        
+        # Verify file was created and has content
+        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 44:  # WAV header is 44 bytes
+            print(f"🎤 Created browser audio file: {temp_path} ({os.path.getsize(temp_path)} bytes)")
+            
+            # Transcribe using existing pipeline
+            transcripts = chunk_and_transcribe_tiny(temp_path)
+            transcript_text = " ".join(transcripts) if transcripts else ""
+            
+            print(f"🎤 Browser audio transcript: '{transcript_text}'")
+            return transcript_text
+        else:
+            print("🎤 Browser audio file too small or not created")
+            return ""
+            
+    except Exception as e:
+        print(f"❌ Error processing browser audio: {e}")
+        return ""
 
 # Import only the functions we@app.get("/debug/latency_stats")
 async def get_latency_stats():
@@ -198,6 +245,44 @@ def create_placeholder_frame(message: str):
     cv2.putText(frame, message, (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
     return frame
 
+def process_browser_audio(audio_b64: str) -> str:
+    """Process base64-encoded PCM audio data from browser"""
+    if not audio_b64:
+        return ""
+    
+    try:
+        # Decode base64 audio data
+        audio_bytes = base64.b64decode(audio_b64)
+        
+        # Create temporary WAV file
+        temp_dir = os.path.join(os.path.dirname(__file__), 'temp_audio')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        temp_path = os.path.join(temp_dir, f"browser_audio_{int(time.time() * 1000)}.wav")
+        
+        # Write WAV file (assuming 16-bit PCM, 16kHz, mono from browser)
+        with wave.open(temp_path, 'wb') as wf:
+            wf.setnchannels(1)  # Mono
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(16000)  # 16kHz
+            wf.writeframes(audio_bytes)
+        
+        # Transcribe using existing function
+        transcription = chunk_and_transcribe_tiny(temp_path)
+        
+        # Clean up temp file
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
+        
+        return " ".join(transcription) if transcription else ""
+        
+    except Exception as e:
+        print(f"❌ Browser audio processing error: {e}")
+        return ""
+
 @app.websocket("/stream_browser_video")
 async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user"):
     """WebSocket endpoint for browser-streamed real-time anomaly detection"""
@@ -256,9 +341,19 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                         decode_time = time.time() - decode_start
                         latency_stats['decode_times'].append(decode_time)
                         
+                        # 🎤 Process audio data if available
+                        audio_transcript = ""
+                        if 'audio' in frame_data and frame_data['audio']:
+                            audio_transcript = process_browser_audio(frame_data['audio'])
+                        
                         # Create frame data structure
                         frame_id = processed_frames + 1
-                        timestamp = frame_data.get('timestamp', time.time())
+                        # Convert browser timestamp from milliseconds to seconds
+                        browser_timestamp = frame_data.get('timestamp', time.time() * 1000)
+                        if browser_timestamp > 1e12:  # If timestamp is in milliseconds
+                            timestamp = browser_timestamp / 1000
+                        else:
+                            timestamp = browser_timestamp
                         
                     else:
                         continue  # Skip non-video messages
@@ -281,7 +376,8 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                     analysis_start = time.time()
                     # Run Tier 1 analysis on every 5th frame (instead of every 3rd)
                     if processed_frames % 5 == 0:
-                        tier1_result = run_tier1_continuous(frame, None)
+                        # Pass audio transcript to tier1 analysis
+                        tier1_result = run_tier1_continuous(frame, audio_transcript if audio_transcript else None)
                         frame_status = tier1_result.get("status", "Normal")
                         
                         # Extract FULL reasoning details from tier1_components
@@ -289,7 +385,7 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                         
                         # Get FULL detailed analysis (not truncated summaries)
                         pose_analysis = tier1_components.get("pose_analysis", {}).get("summary", "No pose detected")
-                        audio_analysis = tier1_components.get("audio_analysis", {}).get("summary", "No audio analysis") 
+                        audio_analysis = tier1_components.get("audio_analysis", {}).get("summary", f"Browser audio: '{audio_transcript}'" if audio_transcript else "No audio detected")
                         scene_analysis = tier1_components.get("scene_analysis", {}).get("summary", "Scene analyzed")
                         
                         # Get fusion details for more context
@@ -308,7 +404,8 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                         detected_objects = tier1_result.get("detected_objects", [])
                     else:
                         # For non-analysis frames, provide basic status
-                        frame_reasoning = f"Frame {processed_frames} - Live streaming active"
+                        audio_status = f" | Audio: '{audio_transcript}'" if audio_transcript else " | No audio"
+                        frame_reasoning = f"Frame {processed_frames} - Live streaming active{audio_status}"
                         frame_status = "Live"
                         confidence_score = 0.0
                         detected_objects = []
@@ -362,8 +459,7 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                     latency_stats['total_frames'] += 1
                     
                     # ⏱️ LATENCY: End-to-end latency (browser to server)
-                    browser_timestamp = frame_data.get('timestamp', time.time())
-                    end_to_end_latency = time.time() - browser_timestamp
+                    end_to_end_latency = time.time() - timestamp
                     print(f"⏱️ Frame {frame_id} - E2E: {end_to_end_latency:.3f}s | Decode: {decode_time:.3f}s | Analysis: {analysis_time:.3f}s | Compress: {compression_time:.3f}s | Transmit: {transmission_time:.3f}s | Total: {total_processing_time:.3f}s")
                     
                 except Exception as e:
