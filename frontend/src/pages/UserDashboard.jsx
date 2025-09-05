@@ -39,14 +39,15 @@ const UserDashboard = ({ user, onLogout, onStartMonitoring }) => {
         
         console.log('📊 Fetching dashboard data for user:', user.username);
         
-        // Use only the working stats endpoint for now
-        const statsResponse = await fetch(`http://127.0.0.1:8000/api/stats`);
+        // Use the configured API URL from environment variables
+        const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+        const statsResponse = await fetch(`${apiUrl}/api/stats`);
         console.log('📈 Stats response status:', statsResponse.status);
         const statsData = statsResponse.ok ? await statsResponse.json() : null;
         console.log('📈 Stats data:', statsData);
         
         // Skip the problematic anomaly_events endpoint for now
-        // const anomaliesResponse = await fetch(`http://127.0.0.1:8000/anomaly_events?username=${encodeURIComponent(user.username)}`);
+        // const anomaliesResponse = await fetch(`${apiUrl}/anomaly_events?username=${encodeURIComponent(user.username)}`);
         // console.log('🚨 Anomalies response status:', anomaliesResponse.status);
         // const anomaliesData = anomaliesResponse.ok ? await anomaliesResponse.json() : { anomaly_events: [] };
         // console.log('🚨 Anomalies data:', anomaliesData);
