@@ -19,13 +19,13 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "https://your-backend-app.azurewebsites.net",
-    "REACT_APP_WS_URL": "wss://your-backend-app.azurewebsites.net"
+    "REACT_APP_API_URL": "https://172.200.121.141",
+    "REACT_APP_WS_URL": "wss://172.200.121.141"
   },
   "build": {
     "env": {
-      "REACT_APP_API_URL": "https://your-backend-app.azurewebsites.net",
-      "REACT_APP_WS_URL": "wss://your-backend-app.azurewebsites.net"
+      "REACT_APP_API_URL": "https://172.200.121.141",
+      "REACT_APP_WS_URL": "wss://172.200.121.141"
     }
   }
 }
