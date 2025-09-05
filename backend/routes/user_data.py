@@ -14,6 +14,8 @@ from bson import ObjectId
 import sys
 sys.path.append('..')
 
+from app import ANOMALIES_COLLECTION, USERS_COLLECTION, USER_SESSIONS_COLLECTION
+
 router = APIRouter(prefix="/api/user", tags=["User Data"])
 
 # MongoDB Collections Schema:
@@ -31,7 +33,7 @@ async def get_user_dashboard(username: str):
     
     try:
         # Get user info
-        user = await database.users.find_one({"username": username})
+        user = await database[USERS_COLLECTION].find_one({"username": username})
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -44,17 +46,17 @@ async def get_user_dashboard(username: str):
         
         # Get recent persisted anomalies (last 24 hours)
         recent_time = datetime.now() - timedelta(hours=24)
-        recent_persisted_anomalies = await database.anomalies.find({
+        recent_persisted_anomalies = await database[ANOMALIES_COLLECTION].find({
             "username": username,
             "session_time": {"$gte": recent_time.isoformat()}
         }).sort("session_time", -1).limit(10).to_list(10)
         
         # Get total statistics (include current session)
-        total_persisted_anomalies = await database.anomalies.count_documents({"username": username})
+        total_persisted_anomalies = await database[ANOMALIES_COLLECTION].count_documents({"username": username})
         total_current_anomalies = len(current_session_anomalies)
         total_anomalies = total_persisted_anomalies + total_current_anomalies
         
-        total_sessions = await database.user_sessions.count_documents({"username": username})
+        total_sessions = await database[USER_SESSIONS_COLLECTION].count_documents({"username": username})
         if user_data['sessions']:  # Add current session if active
             total_sessions += len(user_data['sessions'])
         
@@ -137,7 +139,7 @@ async def get_user_anomalies(
             query["session_time"] = time_filter
         
         # Get total count from database
-        total_persisted = await database.anomalies.count_documents(query)
+        total_persisted = await database[ANOMALIES_COLLECTION].count_documents(query)
         total_current = len(current_session_anomalies)
         total = total_persisted + total_current
         
@@ -145,7 +147,7 @@ async def get_user_anomalies(
         skip = (page - 1) * limit
         
         # Get database anomalies
-        db_anomalies = await database.anomalies.find(query)\
+        db_anomalies = await database[ANOMALIES_COLLECTION].find(query)\
             .sort("session_time", -1)\
             .skip(max(0, skip - total_current))\
             .limit(limit)\
@@ -329,7 +331,7 @@ async def save_current_session_to_database(username: str):
             documents.append(doc)
         
         # Insert into database
-        result = await database.anomalies.insert_many(documents)
+        result = await database[ANOMALIES_COLLECTION].insert_many(documents)
         
         # Clear current session after successful save
         user_data['live'].clear()
@@ -356,7 +358,7 @@ async def get_anomaly_frames(anomaly_id: str):
     
     try:
         # Get anomaly record
-        anomaly = await database.anomalies.find_one({"_id": ObjectId(anomaly_id)})
+        anomaly = await database[ANOMALIES_COLLECTION].find_one({"_id": ObjectId(anomaly_id)})
         if not anomaly:
             raise HTTPException(status_code=404, detail="Anomaly not found")
         
@@ -405,7 +407,7 @@ async def get_anomaly_audio_transcription(anomaly_id: str):
     
     try:
         # Get anomaly record
-        anomaly = await database.anomalies.find_one({"_id": ObjectId(anomaly_id)})
+        anomaly = await database[ANOMALIES_COLLECTION].find_one({"_id": ObjectId(anomaly_id)})
         if not anomaly:
             raise HTTPException(status_code=404, detail="Anomaly not found")
         
@@ -435,7 +437,7 @@ async def get_anomaly_tier2_analysis(anomaly_id: str):
     
     try:
         # Get anomaly record
-        anomaly = await database.anomalies.find_one({"_id": ObjectId(anomaly_id)})
+        anomaly = await database[ANOMALIES_COLLECTION].find_one({"_id": ObjectId(anomaly_id)})
         if not anomaly:
             raise HTTPException(status_code=404, detail="Anomaly not found")
         
@@ -479,11 +481,11 @@ async def get_user_sessions(
     
     try:
         # Get total count
-        total = await database.user_sessions.count_documents({"username": username})
+        total = await database[USER_SESSIONS_COLLECTION].count_documents({"username": username})
         
         # Get paginated results
         skip = (page - 1) * limit
-        sessions = await database.user_sessions.find({"username": username})\
+        sessions = await database[USER_SESSIONS_COLLECTION].find({"username": username})\
             .sort("login_time", -1)\
             .skip(skip)\
             .limit(limit)\
@@ -493,7 +495,7 @@ async def get_user_sessions(
         result_sessions = []
         for session in sessions:
             # Count anomalies in this session
-            session_anomalies = await database.anomalies.count_documents({
+            session_anomalies = await database[ANOMALIES_COLLECTION].count_documents({
                 "session_id": session.get("session_id", "")
             })
             
@@ -528,7 +530,7 @@ async def delete_user_anomaly(anomaly_id: str):
     
     try:
         # Get anomaly to check ownership and cleanup files
-        anomaly = await database.anomalies.find_one({"_id": ObjectId(anomaly_id)})
+        anomaly = await database[ANOMALIES_COLLECTION].find_one({"_id": ObjectId(anomaly_id)})
         if not anomaly:
             raise HTTPException(status_code=404, detail="Anomaly not found")
         
@@ -543,7 +545,7 @@ async def delete_user_anomaly(anomaly_id: str):
             files_deleted += 1
         
         # Delete from database
-        result = await database.anomalies.delete_one({"_id": ObjectId(anomaly_id)})
+        result = await database[ANOMALIES_COLLECTION].delete_one({"_id": ObjectId(anomaly_id)})
         
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Anomaly not found")

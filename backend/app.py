@@ -57,7 +57,14 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 # MongoDB Configuration
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-DATABASE_NAME = "anomaly_detection"
+DATABASE_NAME = os.getenv("DATABASE_NAME", "anomaly_detection")
+
+# Collection Names
+ANOMALIES_COLLECTION = os.getenv("ANOMALIES_COLLECTION", "anomalies")
+SESSIONS_COLLECTION = os.getenv("SESSIONS_COLLECTION", "sessions")
+USERS_COLLECTION = os.getenv("USERS_COLLECTION", "users")
+USER_SESSIONS_COLLECTION = os.getenv("USER_SESSIONS_COLLECTION", "user_sessions")
+TEST_COLLECTION = os.getenv("TEST_COLLECTION", "test_collection")
 
 # Initialize MongoDB client
 mongodb_client = None
@@ -195,8 +202,8 @@ async def test_mongodb_connection():
         collections = await database.list_collection_names()
         
         # Test a simple operation
-        result = await database.test_collection.insert_one({"test": "connection", "timestamp": datetime.now().isoformat()})
-        await database.test_collection.delete_one({"_id": result.inserted_id})
+        result = await database[TEST_COLLECTION].insert_one({"test": "connection", "timestamp": datetime.now().isoformat()})
+        await database[TEST_COLLECTION].delete_one({"_id": result.inserted_id})
         
         return {
             "status": "connected",
@@ -391,7 +398,7 @@ async def save_anomaly_to_db(anomaly_event, username="demo_user"):
                 del anomaly_event["frame"]
         
         # Insert into anomalies collection
-        result = await database.anomalies.insert_one(anomaly_event)
+        result = await database[ANOMALIES_COLLECTION].insert_one(anomaly_event)
         print(f"📊 Saved anomaly to MongoDB for user {username}: {result.inserted_id}")
         return result.inserted_id
     except Exception as e:
@@ -404,7 +411,7 @@ async def save_session_metadata(session_data):
         return None
     
     try:
-        result = await database.sessions.insert_one(session_data)
+        result = await database[SESSIONS_COLLECTION].insert_one(session_data)
         print(f"📊 Saved session metadata to MongoDB: {result.inserted_id}")
         return result.inserted_id
     except Exception as e:
@@ -418,7 +425,7 @@ async def get_anomalies_from_db(session_id=None, limit=100):
     
     try:
         query = {"session_id": session_id} if session_id else {}
-        cursor = database.anomalies.find(query).sort("timestamp", -1).limit(limit)
+        cursor = database[ANOMALIES_COLLECTION].find(query).sort("timestamp", -1).limit(limit)
         anomalies = await cursor.to_list(length=limit)
         return anomalies
     except Exception as e:
@@ -431,7 +438,7 @@ async def get_all_sessions():
         return []
     
     try:
-        cursor = database.sessions.find().sort("start_time", -1)
+        cursor = database[SESSIONS_COLLECTION].find().sort("start_time", -1)
         sessions = await cursor.to_list(length=None)
         return sessions
     except Exception as e:
@@ -612,12 +619,12 @@ async def register_user(request: dict):
     if database is not None:
         try:
             # Check if username already exists in database
-            existing_user = await database.users.find_one({"username": username})
+            existing_user = await database[USERS_COLLECTION].find_one({"username": username})
             if existing_user:
                 raise HTTPException(status_code=400, detail="Username already exists")
             
             # Check if email already exists
-            existing_email = await database.users.find_one({"email": email})
+            existing_email = await database[USERS_COLLECTION].find_one({"email": email})
             if existing_email:
                 raise HTTPException(status_code=400, detail="Email already registered")
         except Exception as e:
@@ -650,7 +657,7 @@ async def register_user(request: dict):
     # Save to MongoDB if available
     if database is not None:
         try:
-            result = await database.users.insert_one(new_user)
+            result = await database[USERS_COLLECTION].insert_one(new_user)
             user_id = str(result.inserted_id)
             print(f"✅ User registered successfully: {username} (ID: {user_id})")
         except Exception as e:
@@ -701,7 +708,7 @@ async def login(request: dict):
     # Check database users if not found in defaults
     if not user_found and database is not None:
         try:
-            db_user = await database.users.find_one({"username": username})
+            db_user = await database[USERS_COLLECTION].find_one({"username": username})
             if db_user and db_user.get("password") == password:
                 user_found = True
                 user_role = db_user.get("role", "operator")
@@ -733,7 +740,7 @@ async def login(request: dict):
         # Save user session to MongoDB if available
         if database is not None:
             try:
-                await database.user_sessions.insert_one(user_data)
+                await database[USER_SESSIONS_COLLECTION].insert_one(user_data)
             except Exception as e:
                 print(f"Warning: Could not save user session to DB: {e}")
         
@@ -758,7 +765,7 @@ async def logout(request: dict):
     
     if database is not None and session_id:
         try:
-            await database.user_sessions.update_one(
+            await database[USER_SESSIONS_COLLECTION].update_one(
                 {"session_id": session_id},
                 {"$set": {"logout_time": datetime.now().isoformat()}}
             )
@@ -874,8 +881,8 @@ async def get_system_stats():
         "mongodb_connected": database is not None,
         "performance_stats": stats,
         "current_status": "Active" if stats['active_sessions'] > 0 else "Idle",
-        "total_stored_anomalies": await database.anomalies.count_documents({}) if database is not None else 0,
-        "total_sessions": await database.sessions.count_documents({}) if database is not None else 0,
+        "total_stored_anomalies": await database[ANOMALIES_COLLECTION].count_documents({}) if database is not None else 0,
+        "total_sessions": await database[SESSIONS_COLLECTION].count_documents({}) if database is not None else 0,
         "active_sessions": stats['active_sessions'],
         "active_cameras": stats['active_cameras']
     }
