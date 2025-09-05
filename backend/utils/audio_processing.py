@@ -10,7 +10,7 @@ from threading import Thread
 from tempfile import NamedTemporaryFile
 
 whisper_tiny = whisper.load_model("tiny")
-whisper_large = whisper.load_model("large")
+whisper_large = whisper.load_model("tiny")
 
 def cleanup_temp_audio_files():
     """Clean up old temporary audio files"""

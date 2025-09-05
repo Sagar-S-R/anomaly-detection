@@ -8,8 +8,8 @@ import numpy as np
 clip_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 
-clip_large_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-clip_large_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+clip_large_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_large_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 
 blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
 blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
