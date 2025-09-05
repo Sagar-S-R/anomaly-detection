@@ -1386,6 +1386,21 @@
 
         // 🎥 CONTINUOUS FRAME PROCESSING VARIABLES
         let currentFilter = 'all'; // 'all', 'normal', 'anomalies'
+        let filteredFrames = []; // Store filtered frame data for modal access
+        let currentSessionId = null; // Track current session to detect new sessions
+        let frameHistory = []; // Store frames for history display
+
+        // 🌐 BROWSER CAMERA VARIABLES
+        let browserStream = null;
+        let browserVideo = null;
+        let frameInterval = null;
+        let reconnectionAttempts = 0;
+        let maxReconnectionAttempts = 5;
+        let baseReconnectionDelay = 3000; // 3 seconds
+        let pingInterval = null; // Keepalive ping interval
+        let lastPingTime = 0; // Track last ping sent
+        let lastPongTime = 0; // Track last pong received
+        let pongTimeout = 15000; // 15 seconds timeout for pong response
 
         // Video stream event handlers
         function handleVideoLoad() {
@@ -1425,6 +1440,92 @@
             console.warn('⚠️ Video stream aborted');
             document.getElementById('videoStreamStatus').textContent = '⚠️ Stream connection interrupted';
             document.getElementById('videoStreamStatus').style.color = 'var(--cyber-yellow)';
+        }
+        async function startBrowserCamera() {
+            // Check if camera is already running
+            if (browserStream && browserVideo) {
+                console.log('📹 Browser camera already running, skipping restart');
+                return;
+            }
+            
+            try {
+                console.log('📹 Requesting browser camera access...');
+                
+                browserStream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 10 }
+                    },
+                    audio: false  // We'll handle audio separately if needed
+                });
+                
+                browserVideo = document.createElement('video');
+                browserVideo.srcObject = browserStream;
+                browserVideo.muted = true; // Prevent audio feedback
+                await browserVideo.play();
+                
+                console.log('✅ Browser camera started successfully');
+                
+                // Start sending frames to server
+                startFrameStreaming();
+                
+            } catch (error) {
+                console.error('❌ Browser camera access denied:', error);
+                alert('Camera access is required for live monitoring. Please grant permission and try again.');
+                throw error;
+            }
+        }
+
+        function startFrameStreaming() {
+            if (frameInterval) {
+                clearInterval(frameInterval);
+            }
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 640;
+            canvas.height = 480;
+            
+            frameInterval = setInterval(() => {
+                if (browserVideo && ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        // Draw video frame to canvas
+                        ctx.drawImage(browserVideo, 0, 0, canvas.width, canvas.height);
+                        
+                        // Convert to base64 JPEG
+                        const frameData = canvas.toDataURL('image/jpeg', 0.8);
+                        const base64Frame = frameData.split(',')[1];
+                        
+                        // Send to server
+                        ws.send(JSON.stringify({
+                            type: 'video_frame',
+                            frame: base64Frame,
+                            timestamp: Date.now()
+                        }));
+                        
+                    } catch (error) {
+                        console.error('❌ Error sending frame:', error);
+                    }
+                }
+            }, 100); // 10 FPS
+            
+            console.log('🎬 Started frame streaming to server');
+        }
+
+        function stopBrowserCamera() {
+            if (frameInterval) {
+                clearInterval(frameInterval);
+                frameInterval = null;
+            }
+            
+            if (browserStream) {
+                browserStream.getTracks().forEach(track => track.stop());
+                browserStream = null;
+            }
+            
+            browserVideo = null;
+            console.log('🛑 Browser camera stopped');
         }
 
         // 🎥 CONTINUOUS FRAME PROCESSING FUNCTIONS
@@ -1524,7 +1625,6 @@
         }
 
         // 🎯 FRAME FILTER FUNCTIONS
-        let frameHistory = []; // Store frames for history display
         
         function setFrameFilter(type) {
             currentFilter = type;
@@ -1610,7 +1710,7 @@
             if (!historyContainer) return;
             
             // Filter frames based on current filter
-            let filteredFrames = frameHistory;
+            filteredFrames = frameHistory;
             if (currentFilter === 'normal') {
                 filteredFrames = frameHistory.filter(f => !f.is_anomaly);
             } else if (currentFilter === 'anomalies') {
@@ -1730,7 +1830,6 @@
         // START/STOP MONITORING FUNCTIONS
         function startMonitoring() {
             console.log('🚀 startMonitoring() function called!');
-            alert('🎯 startMonitoring function called - this proves buttons are working!');
             
             if (ws && ws.readyState === WebSocket.OPEN) {
                 console.log('WebSocket already connected');
@@ -1744,6 +1843,10 @@
             frameCount = 0;
             anomalyCount = 0;
             frameStats = { totalFrames: 0, anomalyFrames: 0, normalFrames: 0 };
+            // Don't clear frameHistory here - preserve across reconnections
+            // frameHistory = []; // Commented out to preserve frames across reconnections
+            // filteredFrames = [];
+            currentSessionId = null; // Reset session tracking for new detection
             updateStats();
             displayAnomalyFrames();
             
@@ -1751,22 +1854,58 @@
             // Dynamic WebSocket URL for deployment
             const isProduction = window.location.protocol === 'https:';
             const wsProtocol = isProduction ? 'wss:' : 'ws:';
-            const wsHost = window.location.host || 'localhost:8000';
+            const wsHost = window.location.host || 'localhost:8001';
             
-            ws = new WebSocket(`${wsProtocol}//${wsHost}/stream_video?username=dashboard_user`);
+            ws = new WebSocket(`${wsProtocol}//${wsHost}/stream_browser_video?username=dashboard_user`);
             
-            ws.onopen = function(event) {
+            ws.onopen = async function(event) {
                 console.log('✅ WebSocket connected to dashboard_app.py');
                 updateConnectionStatus(true);
-                document.getElementById('status').textContent = 'Status: 🔍 ACTIVE MONITORING';
-                document.getElementById('status').className = 'status normal';
-                document.getElementById('currentDetails').textContent = '🛡️ AI analyzing continuous video frames with reasoning...';
+                document.getElementById('detectionStatus').textContent = 'Status: 🔍 ACTIVE MONITORING';
+                document.getElementById('detectionStatus').className = 'status normal';
+                document.getElementById('currentReasoning').textContent = '🛡️ AI analyzing continuous video frames with reasoning...';
+                
+                // Reset reconnection attempts on successful connection
+                reconnectionAttempts = 0;
+                lastPingTime = 0; // Reset ping tracking
+                lastPongTime = Date.now(); // Reset pong tracking
+                
+                // Start keepalive ping
+                startWebSocketPing();
+                
+                // Send immediate ping to establish connection
+                try {
+                    ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                    console.log('💓 Initial ping sent immediately after connection');
+                } catch (error) {
+                    console.error('❌ Error sending initial ping:', error);
+                }
+                
+                // Start browser camera after WebSocket connection
+                try {
+                    await startBrowserCamera();
+                    console.log('📹 Browser camera started successfully');
+                } catch (error) {
+                    console.error('❌ Failed to start browser camera:', error);
+                    alert('Failed to access camera. Please check permissions and try again.');
+                    ws.close();
+                    return;
+                }
             };
 
             ws.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('📨 WebSocket message received:', data.type, 'Frame ID:', data.frame_id);
+                    
+                    // Check for new session and clear frame history if needed
+                    if (data.session_id && data.session_id !== currentSessionId) {
+                        console.log(`🔄 New session detected: ${data.session_id} (previous: ${currentSessionId})`);
+                        currentSessionId = data.session_id;
+                        frameHistory = []; // Clear frame history for new session
+                        filteredFrames = [];
+                        console.log('🧹 Frame history cleared for new session');
+                    }
                     
                     // Handle continuous frame data
                     if (data.type === 'continuous_frame') {
@@ -1825,16 +1964,48 @@
                         handleTier2Start(data);
                     }
                     
+                    // Handle pong responses
+                    if (data.type === 'pong') {
+                        const pingTime = data.timestamp;
+                        const pongTime = Date.now();
+                        const latency = pongTime - pingTime;
+                        lastPongTime = pongTime;
+                        console.log(`💓 WebSocket pong received (${latency}ms latency)`);
+                    }
+                    
                 } catch (error) {
                     console.error('❌ Error processing WebSocket message:', error);
                 }
             };
 
             ws.onclose = function(event) {
-                console.log('🔌 WebSocket closed');
+                console.log('🔌 WebSocket closed - Code:', event.code, 'Reason:', event.reason);
                 updateConnectionStatus(false);
-                document.getElementById('status').textContent = 'Status: 🔌 DISCONNECTED';
-                document.getElementById('status').className = 'status normal';
+                document.getElementById('detectionStatus').textContent = 'Status: 🔌 DISCONNECTED';
+                document.getElementById('detectionStatus').className = 'status normal';
+                
+                // Stop browser camera when WebSocket closes
+                stopBrowserCamera();
+                
+                // Clear keepalive ping
+                stopWebSocketPing();
+                
+                // Auto-reconnect with exponential backoff if it wasn't a manual disconnect
+                if (event.code !== 1000 && reconnectionAttempts < maxReconnectionAttempts) {
+                    reconnectionAttempts++;
+                    const delay = baseReconnectionDelay * Math.pow(2, reconnectionAttempts - 1); // Exponential backoff
+                    console.log(`🔄 Attempting to reconnect (${reconnectionAttempts}/${maxReconnectionAttempts}) in ${delay/1000}s...`);
+                    
+                    setTimeout(() => {
+                        if (!ws || ws.readyState === WebSocket.CLOSED) {
+                            console.log('🔄 Reconnecting...');
+                            startMonitoring();
+                        }
+                    }, delay);
+                } else if (reconnectionAttempts >= maxReconnectionAttempts) {
+                    console.log('❌ Max reconnection attempts reached. Please refresh the page.');
+                    alert('Connection lost. Please refresh the page to reconnect.');
+                }
             };
 
             ws.onerror = function(error) {
@@ -1843,9 +2014,66 @@
             };
         }
 
+        // 🌐 WEBSOCKET KEEPALIVE FUNCTIONS
+        function startWebSocketPing() {
+            if (pingInterval) {
+                clearInterval(pingInterval);
+            }
+            
+            pingInterval = setInterval(() => {
+                const now = Date.now();
+                
+                // Check for pong timeout - only if we've sent a ping recently
+                if (lastPingTime > 0 && (now - lastPingTime) > pongTimeout && 
+                    lastPongTime < lastPingTime) {
+                    console.error('❌ Pong timeout - no response for', pongTimeout/1000, 'seconds');
+                    if (ws) {
+                        ws.close(1011, 'Pong timeout');
+                    }
+                    return;
+                }
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        const pingData = { type: 'ping', timestamp: now };
+                        ws.send(JSON.stringify(pingData));
+                        lastPingTime = now; // Track when we sent the ping
+                        console.log('💓 WebSocket ping sent at:', new Date().toLocaleTimeString());
+                    } catch (error) {
+                        console.error('❌ Error sending ping:', error);
+                        // Check if WebSocket is in a valid state
+                        if (ws.readyState !== WebSocket.OPEN) {
+                            console.log('❌ WebSocket not open, state:', ws.readyState);
+                        }
+                        // If ping fails, the connection might be broken
+                        if (ws) {
+                            ws.close(1011, 'Ping failed');
+                        }
+                    }
+                } else {
+                    console.log('💓 WebSocket not ready for ping, state:', ws ? ws.readyState : 'null');
+                }
+            }, 10000); // Send ping every 10 seconds (more frequent)
+            
+            console.log('💓 WebSocket keepalive started (10s interval)');
+        }
+
+        function stopWebSocketPing() {
+            if (pingInterval) {
+                clearInterval(pingInterval);
+                pingInterval = null;
+                console.log('💓 WebSocket keepalive stopped');
+            }
+        }
+
         function stopMonitoring() {
             console.log('🛑 stopMonitoring() function called!');
-            alert('🛑 stopMonitoring function called!');
+            
+            // Stop browser camera
+            stopBrowserCamera();
+            
+            // Stop WebSocket keepalive
+            stopWebSocketPing();
             
             if (ws) {
                 ws.close(1000, 'User stopped monitoring');
@@ -3193,9 +3421,10 @@ ${JSON.stringify({
         // Auto-refresh video stream every 30 seconds to prevent stale streams
         setInterval(() => {
             if (isMonitoring) {
-                const streamImg = document.getElementById('liveVideoStream');
-                if (streamImg.style.display !== 'none') {
-                    restartVideoStream();
+                const streamImg = document.getElementById('liveVideoCanvas');
+                if (streamImg && streamImg.style.display !== 'none') {
+                    // For browser camera, we don't need to restart the stream
+                    console.log('📹 Browser camera stream active');
                 }
             }
         }, 30000);

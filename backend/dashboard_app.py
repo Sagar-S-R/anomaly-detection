@@ -1,5 +1,8 @@
 """
-Dedicated Backend Dashboard Application
+Dedicated Backend Dashboard A# Import only the functions we need
+from tier1.tier1_pipeline import run_tier1_continuous
+from tier2.tier2_pipeline import run_tier2_continuous
+from dashboard_mode import dashboard_modeication
 Separate from main app.py to avoid frontend conflicts
 Focused only on backend dashboard requirements
 """
@@ -13,10 +16,25 @@ from datetime import datetime
 from typing import Dict, List
 import queue
 import threading
+import numpy as np
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+# Import only the functions we@app.get("/debug/latency_stats")
+async def get_latency_stats():
+    """Get current latency statistics"""
+    return {
+        "total_frames_processed": latency_stats['total_frames'],
+        "avg_decode_time": sum(latency_stats['decode_times'][-100:]) / len(latency_stats['decode_times'][-100:]) if latency_stats['decode_times'] else 0,
+        "avg_analysis_time": sum(latency_stats['analysis_times'][-100:]) / len(latency_stats['analysis_times'][-100:]) if latency_stats['analysis_times'] else 0,
+        "avg_compression_time": sum(latency_stats['compression_times'][-100:]) / len(latency_stats['compression_times'][-100:]) if latency_stats['compression_times'] else 0,
+        "avg_transmission_time": sum(latency_stats['transmission_times'][-100:]) / len(latency_stats['transmission_times'][-100:]) if latency_stats['transmission_times'] else 0,
+        "avg_total_processing_time": sum(latency_stats['total_processing_times'][-100:]) / len(latency_stats['total_processing_times'][-100:]) if latency_stats['total_processing_times'] else 0,
+        "current_fps": 15.0,  # Target FPS
+        "timestamp": datetime.now().isoformat()
+    }
 
 # Import only the functions we need
 from tier1.tier1_pipeline import run_tier1_continuous
@@ -75,63 +93,36 @@ class DashboardSession:
         print(f"🛑 Dashboard session {self.session_id} stopped")
         
     def _init_camera(self) -> bool:
-        """Initialize camera for dashboard"""
+        """Initialize for browser camera streaming (no local hardware)"""
         try:
-            self.video_cap = cv2.VideoCapture(0)
-            if not self.video_cap.isOpened():
-                print("❌ Dashboard: Could not open camera 0")
-                return False
-                
-            # Configure camera
-            self.video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            self.video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            self.video_cap.set(cv2.CAP_PROP_FPS, 30)
-            
-            print("✅ Dashboard: Camera initialized")
-            return True
+            # Remove local camera initialization - will receive streams from browser
+            print("✅ Dashboard: Ready for browser camera streaming")
+            return True  # Always return True since we don't need local camera
         except Exception as e:
             print(f"❌ Dashboard camera init error: {e}")
             return False
     
     def _video_worker(self):
-        """Video processing worker for dashboard"""
-        frame_count = 0
-        print("🎬 Dashboard video worker started")
+        """Video processing worker for dashboard (browser streaming)"""
+        print("🎬 Dashboard video worker started (waiting for browser frames)")
         
+        # Remove local camera reading loop - frames will come from WebSocket/browser
         while not self.stop_event.is_set() and self.is_active:
-            try:
-                ret, frame = self.video_cap.read()
-                if not ret:
-                    print("❌ Dashboard: Failed to read frame")
-                    break
-                    
-                frame_count += 1
-                
-                # Process every 3rd frame for efficiency
-                if frame_count % 3 == 0:
-                    current_timestamp = time.time()
-                    
-                    # Add frame to queue for processing
-                    frame_data = {
-                        "frame_id": frame_count,
-                        "timestamp": current_timestamp,
-                        "frame": frame.copy()
-                    }
-                    
-                    if not self.frame_queue.full():
-                        self.frame_queue.put(frame_data)
-                        
-                time.sleep(1/30.0)  # 30 FPS
-                
-            except Exception as e:
-                print(f"❌ Dashboard video worker error: {e}")
-                break
-                
-        print("🛑 Dashboard video worker stopped")
+            # Just keep the worker alive for session management
+            time.sleep(1.0)
 
 # Global dashboard session
 dashboard_session = DashboardSession()
+
+# Global latency monitoring
+latency_stats = {
+    'total_frames': 0,
+    'decode_times': [],
+    'analysis_times': [],
+    'compression_times': [],
+    'transmission_times': [],
+    'total_processing_times': []
+}
 
 @app.on_event("startup")
 async def startup_event():
@@ -207,15 +198,15 @@ def create_placeholder_frame(message: str):
     cv2.putText(frame, message, (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
     return frame
 
-@app.websocket("/stream_video")
+@app.websocket("/stream_browser_video")
 async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user"):
-    """WebSocket endpoint for real-time anomaly detection and streaming"""
+    """WebSocket endpoint for browser-streamed real-time anomaly detection"""
     await websocket.accept()
     print(f"🔌 Dashboard WebSocket connected for: {username}")
     
-    # Start dashboard session
+    # Start dashboard session (no camera hardware needed)
     if not dashboard_session.start_session(websocket):
-        await websocket.send_json({"error": "Failed to initialize camera"})
+        await websocket.send_json({"error": "Failed to initialize session"})
         return
     
     # Start monitoring session in dashboard_mode
@@ -227,22 +218,58 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
     try:
         # Main processing loop
         processed_frames = 0
+        last_frame_time = time.time()
+        frame_interval = 1.0 / 15.0  # Limit to 15 FPS for smooth streaming
         
         while dashboard_session.is_active:
+            frame_start_time = time.time()
             try:
-                # Get frame from queue
+                # Wait for browser frame data via WebSocket
                 try:
-                    frame_data = dashboard_session.frame_queue.get(timeout=0.5)
-                except queue.Empty:
+                    message = await websocket.receive_text()
+                    frame_data = json.loads(message)
+                    
+                    # Handle ping messages
+                    if frame_data.get('type') == 'ping':
+                        print(f"💓 Ping received from client at {frame_data.get('timestamp', time.time())}")
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": frame_data.get('timestamp', time.time())
+                        })
+                        print(f"💓 Pong sent to client")
+                        continue
+                    
+                    if frame_data.get('type') == 'video_frame':
+                        # Rate limiting - skip frames if too fast
+                        current_time = time.time()
+                        if current_time - last_frame_time < frame_interval:
+                            continue  # Skip this frame to maintain smooth rate
+                        
+                        last_frame_time = current_time
+                        
+                        # ⏱️ LATENCY: Frame decode timing
+                        decode_start = time.time()
+                        frame_b64 = frame_data['frame']
+                        frame_bytes = base64.b64decode(frame_b64)
+                        nparr = np.frombuffer(frame_bytes, np.uint8)
+                        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        decode_time = time.time() - decode_start
+                        latency_stats['decode_times'].append(decode_time)
+                        
+                        # Create frame data structure
+                        frame_id = processed_frames + 1
+                        timestamp = frame_data.get('timestamp', time.time())
+                        
+                    else:
+                        continue  # Skip non-video messages
+                        
+                except Exception as e:
+                    print(f"❌ Error receiving browser frame: {e}")
                     continue
-                
-                frame = frame_data["frame"]
-                frame_id = frame_data["frame_id"]
-                timestamp = frame_data["timestamp"]
                 
                 processed_frames += 1
                 
-                # Always run Tier 1 analysis for continuous reasoning
+                # OPTIMIZED: Run analysis less frequently for better performance
                 tier1_result = None
                 frame_reasoning = "Initializing analysis..."
                 frame_status = "Processing"
@@ -250,63 +277,100 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                 detected_objects = []
                 
                 try:
-                    # Run Tier 1 analysis on every 3rd frame for continuous monitoring
-                    tier1_result = run_tier1_continuous(frame, None)
-                    frame_status = tier1_result.get("status", "Normal")
-                    
-                    # Extract FULL reasoning details from tier1_components
-                    tier1_components = tier1_result.get("tier1_components", {})
-                    
-                    # Get FULL detailed analysis (not truncated summaries)
-                    pose_analysis = tier1_components.get("pose_analysis", {}).get("summary", "No pose detected")
-                    audio_analysis = tier1_components.get("audio_analysis", {}).get("summary", "No audio analysis") 
-                    scene_analysis = tier1_components.get("scene_analysis", {}).get("summary", "Scene analyzed")
-                    
-                    # Get fusion details for more context
-                    fusion_details = tier1_components.get("fusion_logic", {}).get("details", "Analysis complete")
-                    
-                    # Create COMPREHENSIVE reasoning with FULL details
-                    frame_reasoning = f"""🎯 POSE ANALYSIS: {pose_analysis}
+                    # ⏱️ LATENCY: Analysis timing
+                    analysis_start = time.time()
+                    # Run Tier 1 analysis on every 5th frame (instead of every 3rd)
+                    if processed_frames % 5 == 0:
+                        tier1_result = run_tier1_continuous(frame, None)
+                        frame_status = tier1_result.get("status", "Normal")
+                        
+                        # Extract FULL reasoning details from tier1_components
+                        tier1_components = tier1_result.get("tier1_components", {})
+                        
+                        # Get FULL detailed analysis (not truncated summaries)
+                        pose_analysis = tier1_components.get("pose_analysis", {}).get("summary", "No pose detected")
+                        audio_analysis = tier1_components.get("audio_analysis", {}).get("summary", "No audio analysis") 
+                        scene_analysis = tier1_components.get("scene_analysis", {}).get("summary", "Scene analyzed")
+                        
+                        # Get fusion details for more context
+                        fusion_details = tier1_components.get("fusion_logic", {}).get("details", "Analysis complete")
+                        
+                        # Create COMPREHENSIVE reasoning with FULL details
+                        frame_reasoning = f"""🎯 POSE ANALYSIS: {pose_analysis}
 🎵 AUDIO ANALYSIS: {audio_analysis} 
 🖼️ SCENE ANALYSIS: {scene_analysis}
 ⚖️ FUSION DECISION: {fusion_details}
 
 📊 DETAILED STATUS: {frame_status}
 🔍 FULL ANALYSIS: {tier1_result.get('details', 'No additional details')}"""
+                        
+                        confidence_score = tier1_result.get("confidence", 0.0)
+                        detected_objects = tier1_result.get("detected_objects", [])
+                    else:
+                        # For non-analysis frames, provide basic status
+                        frame_reasoning = f"Frame {processed_frames} - Live streaming active"
+                        frame_status = "Live"
+                        confidence_score = 0.0
+                        detected_objects = []
                     
-                    confidence_score = tier1_result.get("confidence", 0.0)
-                    detected_objects = tier1_result.get("detected_objects", [])
+                    analysis_time = time.time() - analysis_start
+                    latency_stats['analysis_times'].append(analysis_time)
                     
                 except Exception as e:
                     frame_reasoning = f"Analysis Error: {str(e)}"
                     frame_status = "Error"
                 
-                # Send EVERY PROCESSED frame with reasoning to WebSocket
+                # OPTIMIZED: Compress frame more aggressively for faster transmission
                 try:
+                    # ⏱️ LATENCY: Compression timing
+                    compression_start = time.time()
                     display_frame = cv2.resize(frame, (640, 480))
-                    _, buffer = cv2.imencode('.jpg', display_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    _, buffer = cv2.imencode('.jpg', display_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])  # Reduced quality
                     frame_base64 = base64.b64encode(buffer).decode('utf-8')
+                    compression_time = time.time() - compression_start
+                    latency_stats['compression_times'].append(compression_time)
                     
-                    # Create comprehensive frame data with reasoning
+                    # OPTIMIZED: Send lighter frame data for smooth streaming
                     frame_data = {
                         "type": "continuous_frame",
                         "frame_data": frame_base64,
                         "frame_id": frame_id,
                         "timestamp": timestamp,
                         "status": frame_status,
-                        "reasoning": frame_reasoning,
+                        "reasoning": frame_reasoning[:200] if len(frame_reasoning) > 200 else frame_reasoning,  # Limit text length
                         "confidence": confidence_score,
-                        "detected_objects": detected_objects,
+                        "detected_objects": detected_objects[:5] if len(detected_objects) > 5 else detected_objects,  # Limit objects
                         "is_anomaly": frame_status == "Suspected Anomaly",
                         "session_id": dashboard_session.session_id,
                         "analysis_time": datetime.now().strftime("%H:%M:%S")
                     }
                     
+                    # Check WebSocket connection state before sending
+                    if websocket.client_state.name != 'CONNECTED':
+                        print(f"🔌 WebSocket not connected (state: {websocket.client_state.name}), stopping frame processing")
+                        break
+                    
+                    # ⏱️ LATENCY: Transmission timing
+                    transmission_start = time.time()
                     await websocket.send_json(frame_data)
+                    transmission_time = time.time() - transmission_start
+                    latency_stats['transmission_times'].append(transmission_time)
+                    
+                    # ⏱️ LATENCY: Total processing time
+                    total_processing_time = time.time() - frame_start_time
+                    latency_stats['total_processing_times'].append(total_processing_time)
+                    latency_stats['total_frames'] += 1
+                    
+                    # ⏱️ LATENCY: End-to-end latency (browser to server)
+                    browser_timestamp = frame_data.get('timestamp', time.time())
+                    end_to_end_latency = time.time() - browser_timestamp
+                    print(f"⏱️ Frame {frame_id} - E2E: {end_to_end_latency:.3f}s | Decode: {decode_time:.3f}s | Analysis: {analysis_time:.3f}s | Compress: {compression_time:.3f}s | Transmit: {transmission_time:.3f}s | Total: {total_processing_time:.3f}s")
                     
                 except Exception as e:
                     print(f"❌ Error sending frame: {e}")
-                    break
+                    print(f"🔌 WebSocket state: {websocket.client_state if hasattr(websocket, 'client_state') else 'unknown'}")
+                    # Raise WebSocketDisconnect to trigger proper cleanup
+                    raise WebSocketDisconnect(code=1011, reason=f"Frame send error: {e}")
                 
                 # If anomaly detected, save and run Tier 2
                 if tier1_result and tier1_result.get("status") == "Suspected Anomaly":
@@ -348,14 +412,40 @@ async def websocket_stream(websocket: WebSocket, username: str = "dashboard_user
                         "analysis_time": datetime.now().strftime("%H:%M:%S")
                     }
                     
-                    await websocket.send_json(tier1_message)
-                    print(f"📡 Dashboard: Sent tier1_detection message for pipeline card creation")
+                    # Check WebSocket connection before sending tier1 message
+                    if websocket.client_state.name != 'CONNECTED':
+                        print(f"🔌 WebSocket not connected for tier1 message (state: {websocket.client_state.name})")
+                        raise WebSocketDisconnect(code=1011, reason="WebSocket not connected for tier1 message")
+                    
+                    try:
+                        await websocket.send_json(tier1_message)
+                        print(f"📡 Dashboard: Sent tier1_detection message for pipeline card creation")
+                    except Exception as e:
+                        print(f"❌ Error sending tier1 message: {e}")
+                        raise WebSocketDisconnect(code=1011, reason=f"Tier1 message send error: {e}")
                     
                     # Run Tier 2 analysis in background
                     asyncio.create_task(run_tier2_for_dashboard(frame, frame_id, timestamp, websocket))
                 
-                # Small delay to prevent overwhelming
-                await asyncio.sleep(0.033)  # ~30 FPS
+                # ⏱️ LATENCY: Periodic performance report
+                if processed_frames % 50 == 0 and latency_stats['total_frames'] > 0:
+                    avg_decode = sum(latency_stats['decode_times'][-50:]) / len(latency_stats['decode_times'][-50:])
+                    avg_analysis = sum(latency_stats['analysis_times'][-50:]) / len(latency_stats['analysis_times'][-50:]) if latency_stats['analysis_times'] else 0
+                    avg_compress = sum(latency_stats['compression_times'][-50:]) / len(latency_stats['compression_times'][-50:])
+                    avg_transmit = sum(latency_stats['transmission_times'][-50:]) / len(latency_stats['transmission_times'][-50:])
+                    avg_total = sum(latency_stats['total_processing_times'][-50:]) / len(latency_stats['total_processing_times'][-50:])
+                    
+                    print(f"📊 LATENCY REPORT (Last 50 frames):")
+                    print(f"   Decode: {avg_decode:.3f}s | Analysis: {avg_analysis:.3f}s | Compress: {avg_compress:.3f}s")
+                    print(f"   Transmit: {avg_transmit:.3f}s | Total: {avg_total:.3f}s | FPS: {50/avg_total:.1f}")
+                    
+                    # Clear old stats to prevent memory buildup
+                    for key in latency_stats:
+                        if isinstance(latency_stats[key], list) and len(latency_stats[key]) > 100:
+                            latency_stats[key] = latency_stats[key][-50:]
+                
+                # OPTIMIZED: Slightly longer delay for better performance
+                await asyncio.sleep(0.066)  # ~15 FPS instead of 30 FPS
                 
             except Exception as e:
                 print(f"❌ Processing error: {e}")
