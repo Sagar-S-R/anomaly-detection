@@ -1,5 +1,5 @@
 import whisper
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from pydub import AudioSegment
 import os
 import pyaudio
