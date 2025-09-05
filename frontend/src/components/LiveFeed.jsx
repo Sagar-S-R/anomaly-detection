@@ -164,7 +164,7 @@ const LiveFeed = ({ anomalyStatus, currentDetails, isConnected, showVideoStream,
                   ) : !useWebSocketStream ? (
                     <img
                       key={videoKey}
-                      src={`http://127.0.0.1:8000/video_stream?t=${videoKey}`}
+                      src={`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/video_stream?t=${videoKey}`}
                       alt="Live Video Stream (MJPEG)"
                       className="w-full h-auto max-h-96 object-contain transition-all duration-500 border-4 rounded-xl"
                       onError={handleVideoError}

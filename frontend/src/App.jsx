@@ -154,7 +154,8 @@ function App() {
         
         try {
           setCurrentDetails('Uploading video...');
-          const uploadResponse = await fetch('http://127.0.0.1:8000/upload_video', {
+          const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+          const uploadResponse = await fetch(`${apiUrl}/upload_video`, {
             method: 'POST',
             body: formData
           });
@@ -240,7 +241,8 @@ function App() {
       // Add username to WebSocket connection
       const username = user?.username || 'demo_user';
       const separator = endpoint.includes('?') ? '&' : '?';
-      const wsUrl = `ws://127.0.0.1:8000${endpoint}${separator}username=${encodeURIComponent(username)}`;
+      const wsBaseUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
+      const wsUrl = `${wsBaseUrl}${endpoint}${separator}username=${encodeURIComponent(username)}`;
       
       console.log('🌐 Attempting WebSocket connection to:', wsUrl);
       const newWs = new WebSocket(wsUrl);
@@ -654,7 +656,8 @@ function App() {
     try {
       setCurrentDetails('Preparing download...');
       const username = user?.username || 'demo_user';
-      const response = await fetch(`http://127.0.0.1:8000/download-session-data?username=${encodeURIComponent(username)}`);
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/download-session-data?username=${encodeURIComponent(username)}`);
       
       if (!response.ok) {
         throw new Error('Download failed');
