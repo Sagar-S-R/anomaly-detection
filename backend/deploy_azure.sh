@@ -10,9 +10,9 @@ echo "🚀 Starting Azure VM deployment for Anomaly Detection System..."
 echo "📦 Updating system packages..."
 sudo apt update && sudo apt upgrade -y
 
-# Install Python 3.9+ if not available
-echo "🐍 Installing Python 3.9..."
-sudo apt install -y python3.9 python3.9-venv python3-pip
+# Install Python 3.10+ if not available
+echo "🐍 Installing Python 3.10..."
+sudo apt install -y python3.10 python3.10-venv python3-pip
 
 # Install system dependencies for OpenCV and other libraries
 echo "🔧 Installing system dependencies..."
@@ -49,7 +49,7 @@ cd /opt/anomaly-detection/backend
 
 # Create virtual environment
 echo "🌐 Creating Python virtual environment..."
-python3.9 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 
 # Install Python dependencies
