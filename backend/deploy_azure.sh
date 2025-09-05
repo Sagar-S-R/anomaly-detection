@@ -30,22 +30,29 @@ sudo apt install -y \
 
 # Create application directory
 echo "📁 Setting up application directory..."
-sudo mkdir -p /opt/anomaly-detection
-sudo chown $USER:$USER /opt/anomaly-detection
-cd /opt/anomaly-detection
-
-# Clone repository (assuming this script is run from the cloned repo)
-echo "📥 Copying project files..."
-# If running from local clone, copy files instead of cloning
-if [ -d "/Users/samrudhp/Projects-git/anomaly-detection" ]; then
-    cp -r /Users/samrudhp/Projects-git/anomaly-detection/* /opt/anomaly-detection/
+# Check if we're already in the project directory
+if [ -f "requirements.txt" ] && [ -f "app.py" ]; then
+    echo "✅ Already in project directory, proceeding..."
+    PROJECT_DIR="$(pwd)/.."
 else
-    # git clone https://github.com/your-username/anomaly-detection.git .
-    echo "❌ Please ensure repository is cloned locally first"
-    exit 1
+    sudo mkdir -p /opt/anomaly-detection
+    sudo chown $USER:$USER /opt/anomaly-detection
+    cd /opt/anomaly-detection
+
+    # Clone repository (assuming this script is run from the cloned repo)
+    echo "📥 Copying project files..."
+    # If running from local clone, copy files instead of cloning
+    if [ -d "/Users/samrudhp/Projects-git/anomaly-detection" ]; then
+        cp -r /Users/samrudhp/Projects-git/anomaly-detection/* /opt/anomaly-detection/
+    else
+        # git clone https://github.com/your-username/anomaly-detection.git .
+        echo "❌ Please ensure repository is cloned locally first"
+        exit 1
+    fi
+    PROJECT_DIR="/opt/anomaly-detection"
 fi
 
-cd /opt/anomaly-detection/backend
+cd "$PROJECT_DIR/backend"
 
 # Create virtual environment
 echo "🌐 Creating Python virtual environment..."
