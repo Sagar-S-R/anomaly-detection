@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../config/api';
 
 const DatabaseManager = () => {
   const [sessions, setSessions] = useState([]);
@@ -11,7 +12,7 @@ const DatabaseManager = () => {
   const fetchSessions = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/sessions');
+      const response = await fetch(getApiUrl('/api/sessions'));
       const data = await response.json();
       setSessions(data.sessions);
     } catch (error) {
@@ -25,7 +26,7 @@ const DatabaseManager = () => {
   const fetchAnomalies = async (sessionId) => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:8000/api/anomalies?session_id=${sessionId}`);
+      const response = await fetch(getApiUrl(`/api/anomalies?session_id=${sessionId}`));
       const data = await response.json();
       setAnomalies(data.anomalies);
       setSelectedSession(sessionId);
@@ -39,7 +40,7 @@ const DatabaseManager = () => {
   // Fetch system stats
   const fetchSystemStats = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/stats');
+      const response = await fetch(getApiUrl('/api/stats'));
       const data = await response.json();
       setSystemStats(data);
     } catch (error) {
@@ -50,7 +51,7 @@ const DatabaseManager = () => {
   // Download session data
   const downloadSession = async (sessionId) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/download_session/${sessionId}`);
+      const response = await fetch(getApiUrl(`/api/download_session/${sessionId}`));
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);

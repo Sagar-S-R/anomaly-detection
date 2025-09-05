@@ -167,7 +167,7 @@ const VideoControls = ({
           </div>
 
           <div className="text-xs text-cyan-400/70 hidden lg:block font-mono">
-            Backend: localhost:8000
+            Backend: {process.env.REACT_APP_API_URL || 'localhost:8000'}
           </div>
         </div>
       </div>
@@ -273,7 +273,7 @@ const VideoControls = ({
           </div>
 
           <div className="text-xs text-cyan-400/70 hidden lg:block font-mono">
-            Backend: localhost:8000
+            Backend: {process.env.REACT_APP_API_URL || 'localhost:8000'}
           </div>
         </div>
       </div>
